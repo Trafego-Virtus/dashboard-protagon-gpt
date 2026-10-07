@@ -1,0 +1,248 @@
+{
+  "original_archive": "Dashboard-Protagon-Novo-main.zip",
+  "original_archive_sha256": "1c344fdd1954b5f450b3203388f1a21722a013a19f46631412ff84ff8f5f4dc4",
+  "preserved_application_files": [
+    {
+      "path": "src/App.tsx",
+      "sha256": "f6ab354fd0ac6e153dcd61a48550ab9eb2e3b52b3e091ba77ca4d8835ae5fce0"
+    },
+    {
+      "path": "src/components/AnaliseKPIs.tsx",
+      "sha256": "022b5b878ec907f0c0d56f41b72106d863ecdbbcc07b0bde6e66f902f99819e2"
+    },
+    {
+      "path": "src/components/CreativesTableDistribuicao.tsx",
+      "sha256": "6701747adebe6875aa5ff89d61709ac46e05f542e1558a9164f19b6a89269ada"
+    },
+    {
+      "path": "src/components/DistribuicaoGeralView.tsx",
+      "sha256": "9ecef58c19b6ece3ceda1c6c552f91b9b0e95dd6fc1544441bfe36dcb7a3a149"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/BenchmarkComparisonSection.tsx",
+      "sha256": "8a081922f69b41d50c027b36118ae5c3dac018598a13c2f966e8947ba0948e44"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/CACComparisonCard.tsx",
+      "sha256": "6805d1bac0d2ee907b1435792496deb423c0a877f7f8890c85074265ce5138a5"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/FeedbacksKPIsView.tsx",
+      "sha256": "01907d2d29dbeb573ca4d4666c30c4925d152fff2a53d164e044a04cd76dc772"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/ImpactCreativesSection.tsx",
+      "sha256": "6c23fa76d1fcd9beb00be35a74f5e974afa26e44cd04ecbfc1804aae08b656bd"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/MetricImpactModal.tsx",
+      "sha256": "03223431bbead00ac327de38b78cc2287fe3140d9bd9a8be1c196fe024352a76"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/PeriodComparisonSection.tsx",
+      "sha256": "51f8883eff88ad8851908872a893fe637ff44f06faf984c3bfa7661264896cb4"
+    },
+    {
+      "path": "src/components/FeedbacksKPIs/RestrictedLogin.tsx",
+      "sha256": "f8ac595d871794ca47fea7fb1da3838e11bc0a542871f41beabeae5631549e49"
+    },
+    {
+      "path": "src/components/GDCacPontual.tsx",
+      "sha256": "bcca3ce3ff48f9904753779d183f52767863722d421fa265fc9fa712723bae6e"
+    },
+    {
+      "path": "src/components/GeracaoDemandaCiclos.tsx",
+      "sha256": "603252c85e2a1862cc1a8c11db33abf33689cba05dd62469dbbaa5fdbb6e6efb"
+    },
+    {
+      "path": "src/components/GeracaoDemandaEstudoPublico.tsx",
+      "sha256": "49d1735dc6c9e86d5eea7e10b90330b18c64699a4cf3c31828692bf17234daf5"
+    },
+    {
+      "path": "src/components/GlobalAnaliseKPIs.tsx",
+      "sha256": "f2e485e641a2f6b1af537b43161e1321560884b502b1f5492bef6620e0e4de05"
+    },
+    {
+      "path": "src/components/MetricCard.tsx",
+      "sha256": "41d9ec909ecab4ce83d79cf1f5bf5679a148591594b89a764306baae0bfa0277"
+    },
+    {
+      "path": "src/components/MultiSelect.tsx",
+      "sha256": "74030660b183e0117a75c486cb2e3e6183e3f7d23b42d6916b1c53a1323b0e95"
+    },
+    {
+      "path": "src/components/PerpetualGuardians.tsx",
+      "sha256": "c22057451308d24149212c90841ffb2a0c34802f1383653c80c879611d3a49fd"
+    },
+    {
+      "path": "src/components/PerpetualQuiz.tsx",
+      "sha256": "f0c2361dfc842290962aacd1f80363cb9db69f96510c4592efd06c8c87d174fd"
+    },
+    {
+      "path": "src/components/PerpetualWebinario.tsx",
+      "sha256": "d86b98644d15badb18784beacdc9cad522afa4027fd49da6c50c9da7ae3d0cc4"
+    },
+    {
+      "path": "src/components/PerpetualWorkshop.tsx",
+      "sha256": "5adc99dcdac474a4da100875675f8df509ffba041d12a1fd70b6f9c89005d223"
+    },
+    {
+      "path": "src/components/PesquisaAudiencia.tsx",
+      "sha256": "8b945d6f23cdc3055d51cbf0718ccaa1fa8e0687fbf66dbe59a348e105dd7256"
+    },
+    {
+      "path": "src/components/Planner.tsx",
+      "sha256": "4638b29e50988fc6cd8920150daaff60102e70df25e930091badbf332d7ea360"
+    },
+    {
+      "path": "src/components/Previsoes.tsx",
+      "sha256": "8ccc308e596b125e93c61fad09ec9760a7cb526490accf1686de377ee600c58c"
+    },
+    {
+      "path": "src/components/ReportGenerator.tsx",
+      "sha256": "1e7656e70604bd25d3cc93fc126d9ebe9c6c4540eb82b4db4fe7a3d7f95e3c79"
+    },
+    {
+      "path": "src/components/TestesAgil/CardTesteAgil.tsx",
+      "sha256": "b433a002ecd9e3d84e0e433a5dd16729ab6ce6ef38f8e0c600d96795c020cf1b"
+    },
+    {
+      "path": "src/components/TestesAgil/FeedbackModal.tsx",
+      "sha256": "40ee3932ffa0b678915da47119337b2ffaba4658efdf043cf612842797b7ab78"
+    },
+    {
+      "path": "src/components/TestesAgil/NovoTesteModal.tsx",
+      "sha256": "72f2d07dcc4ef458bf145de8661960f74477afc0544613a094c42a58539e84ad"
+    },
+    {
+      "path": "src/components/TestesAgil/ReferenceKpisModal.tsx",
+      "sha256": "fea5997c51437e118f8eb35deb2010b7bb05c388bafdbe80efb3025c2981a127"
+    },
+    {
+      "path": "src/components/TestesAgil/TestesAgilView.tsx",
+      "sha256": "587000d9a902bf539f8d294f2bddd5f467d9f8a7ae0123e3dfe00af2a4d1c3a4"
+    },
+    {
+      "path": "src/components/TicketTypeMetrics.tsx",
+      "sha256": "e88395fa0b5b02f46ddd654d8e89761db0ca734b9dcb9d9432388c7bb921da13"
+    },
+    {
+      "path": "src/data/benchmarkReferences.ts",
+      "sha256": "5ab856464b118e8587512fe84fd0b2f7c1281c7d521cd915e77ea13a48020dee"
+    },
+    {
+      "path": "src/data/diagnosticChecklist.ts",
+      "sha256": "a1c6f07a1b8694180bc57dc6360b8bf5c282cab7bbc7c04b8a5d28cfce58c604"
+    },
+    {
+      "path": "src/data/kpisProtagon.ts",
+      "sha256": "748596d6cd63581ab7fca8cc2c87352278073daf718b693b7fe99414e973bf89"
+    },
+    {
+      "path": "src/index.css",
+      "sha256": "d474f25b3759ab71209a552b352c309bb5f32b240b1d9077c967ada71efe2992"
+    },
+    {
+      "path": "src/main.tsx",
+      "sha256": "5580d48b0fec68698a113d45a640b88d479dc35eb1f4b87c51f67c6cc81cee9b"
+    },
+    {
+      "path": "src/services/testesService.ts",
+      "sha256": "298c17fa165d7c1ea6c43f7ed0e0038dac4d599ead405833580a96e8695b651b"
+    },
+    {
+      "path": "src/types/testes.ts",
+      "sha256": "11877d09dbdc1c74292393167f0ca423646c0ed971710ec54105e73f2b283159"
+    },
+    {
+      "path": "src/types.ts",
+      "sha256": "2bbfed46282db660d3f5d644d5e6414a710e7eee486773d2a229792ac36abd2e"
+    },
+    {
+      "path": "src/utils/api.ts",
+      "sha256": "563028e89fef5f090090a98d04f9ccb31671619e81072675fd1ce02dd6038b5e"
+    },
+    {
+      "path": "src/utils/campaignExtractor.ts",
+      "sha256": "72b3af80a6ad410d00c77f2fcc86ee813ec0072af1b2052af3f7e25217fd4163"
+    },
+    {
+      "path": "src/utils/feedbackClipboardExport.ts",
+      "sha256": "aa24f300edb63a6808307c8dfe169900141b819c3f1685564d8ed23f965bbc0a"
+    },
+    {
+      "path": "src/utils/feedbackKpiCalculator.ts",
+      "sha256": "36de99684b9abee95791ac4669619b41cde1a187c607909b3001c526d898b16e"
+    },
+    {
+      "path": "src/utils/format.ts",
+      "sha256": "9edcf821387466c273346167da72d17a9c2a2a12ac99894ca0b1b1907ccd886a"
+    },
+    {
+      "path": "src/utils/guardiansCalculator.ts",
+      "sha256": "74e894daaba93eca2e5f2102e6178d6d787904666618feb214ab97144d0a1067"
+    },
+    {
+      "path": "src/utils/guardiansData.ts",
+      "sha256": "08b7904de5f3ad66fb597c8e438fec84af13da22afeb99e9ca5c77bd82dc7bd5"
+    },
+    {
+      "path": "src/utils/quizCalculator.ts",
+      "sha256": "4ecbc0503a646ac60cc4c9de6499b67c5e1756849d7e838a7d767f0e2d64687a"
+    },
+    {
+      "path": "src/utils/quizData.ts",
+      "sha256": "a35884f187528d58cd0fc5c90078af460dfd1d15bd67e71616c62ded631c8eb3"
+    },
+    {
+      "path": "src/utils/webinarioCalculator.ts",
+      "sha256": "d254ae1b2ea09667849a0dae228000695d551ed263ba02219c911d88a9f3df5c"
+    },
+    {
+      "path": "src/utils/webinarioData.ts",
+      "sha256": "24557ff62374ad45fcc7e5fa36b52fdb3f6e1825ac02fc14f14be40065ad1510"
+    },
+    {
+      "path": "src/utils/workshopCalculator.ts",
+      "sha256": "0431958df7029148da466dbc263bf05517edc53a739fed217a1ff32282a1cca4"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "sha256": "57ab2c0280557f183e0b56eae3e7b2a7be01d6b47380ed7f6e59d5717a9c5033"
+    }
+  ],
+  "notes": [
+    "52 original application files remain byte-identical to the archive.",
+    "Includes the reviewed lead counts and Meteórico creative table fixes.",
+    "Vercel-specific API, build and routing configuration; original Firebase remains the default, with optional environment overrides."
+  ],
+  "modified_application_files": [
+    {
+      "path": "src/components/Dashboard.tsx",
+      "original_sha256": "190bd4df165442b04f2357676c5e0f490d63cb6b074481f7cabc11ad06de96d7",
+      "current_sha256": "185e46a0c07064b25bded0129d727b6e8c6760651b2f41f66df74172df505370"
+    },
+    {
+      "path": "src/utils/dataFetching.ts",
+      "original_sha256": "b55f25d451ead6a99af12f1d57bdc04be22dd5eafa97eeb6ea7920afe76ac5f6",
+      "current_sha256": "694fa97eec0e1678fb4e7d02d1ec7d6ed6c720e247b0451b11528a76dad4eb0f"
+    },
+    {
+      "path": "src/utils/metricsCalculator.ts",
+      "original_sha256": "7d08d0bc0be5f845a360d885cd367b26d73da66b336693aeee74241c97baece2",
+      "current_sha256": "ef02690e59a6671aaf72c9e9107656d868b2fd3a8e43166e0306510ec3fa20a2"
+    },
+    {
+      "path": "src/components/CreativesTable.tsx",
+      "original_sha256": "4aa3eb6997a9159ddefa637989e42860bbff2a61f95381457772df8987e59f68",
+      "current_sha256": "68914674c69840bbb439a06e09b3b9f73a7f7d0553c67c912457c84a604b9dca"
+    },
+    {
+      "path": "src/lib/firebase.ts",
+      "original_sha256": "5ef1c4d3b1f0262b07688a0320a835a8d7d38bbf91dc677544c2349bce76ada3",
+      "current_sha256": "644b24a295a49b42c1ace62ee235dc7796e3cfd8024f05b4a136230710c65432"
+    }
+  ],
+  "source_commit": "33c57c8548edacf434e5a72525f7239f9ef322ee",
+  "target": "GitHub + Vercel, Node.js 22, Vite frontend and api/csv.ts function"
+}

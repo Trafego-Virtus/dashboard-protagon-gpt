@@ -1,0 +1,19 @@
+DASHBOARD PROTAGON — DEPLOY PELO GITHUB
+
+1. Descompacte este ZIP.
+2. No GitHub, envie o conteúdo descompactado para a raiz do repositório.
+   package.json e vercel.json precisam ficar visíveis na raiz.
+3. Na Vercel: Add New > Project > importe o repositório.
+4. Root Directory: ./
+5. Clique em Deploy. As configurações já estão no vercel.json.
+
+Framework: Vite
+Install Command: bun install --frozen-lockfile
+Build Command: npm run build
+Output Directory: dist
+Node.js: 22.x
+
+Não envie apenas o arquivo ZIP para o GitHub; envie seu conteúdo.
+Mantenha as pastas api, src, server, scripts e public, além dos arquivos da raiz.
+Nenhuma variável de ambiente é obrigatória para continuar usando as fontes e
+as configurações atuais. Consulte o README para detalhes.
