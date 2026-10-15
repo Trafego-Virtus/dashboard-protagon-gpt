@@ -1,72 +1,74 @@
 # Dashboard Protagon — GitHub e Vercel
 
-Pacote pronto para publicar na Vercel a partir do GitHub. Inclui as correções
-de leads/MQLs das praças e da subseção de criativos do Meteórico de Goiânia.
+Aplicativo React/TypeScript com o visual e os recursos do arquivo
+`Dashboard-Protagon-Novo-main(1).zip`. Inclui visão geral, Geração de Demanda,
+Venda Direta, Distribuição de Conteúdo, Meteórico, funis perpétuos, relatórios,
+previsões, pesquisa de audiência, feedbacks de KPIs e testes.
 
-## Publicar
+A atualização incorpora funis do Meteórico por página, filtro de campanhas de
+escala/teste, públicos, lista de leads e métricas de grupos do Sendflow.
 
-1. Descompacte `Dashboard-Protagon-Vercel.zip`.
-2. Envie os arquivos descompactados para o repositório GitHub. `package.json`,
-   `vercel.json`, `index.html`, `bun.lock`, `api/` e `src/` devem ficar na raiz
-   do repositório. Envie também `server/`, `scripts/`, `public/` e os demais
-   arquivos deste pacote. Não envie apenas o ZIP para o GitHub.
-3. Na Vercel, escolha **Add New → Project** e importe esse repositório.
-4. Mantenha **Root Directory: `./`**. As demais configurações já estão em
-   `vercel.json`:
+## Fontes de leads
+
+As quatro URLs publicadas enviadas pelo usuário já estavam no ZIP. O problema
+estava no identificador da aba: `gid=0` passou a ser **OFF - GERAL**.
+Os novos identificadores foram conferidos no Google Sheets e na publicação web:
+
+| Praça | Planilha | Aba | gid |
+| --- | --- | --- | --- |
+| Joinville | PRO-JV-035 | GERAL | 1372087036 |
+| Porto Alegre | PRO-POA-037 | GERAL | 1846123823 |
+| Goiânia | PRO-E038-GOI | GERAL | 1301297577 |
+| São Paulo | PRO-039-SP | GERAL | 1309336900 |
+
+- `src/utils/dashboardSources.ts` centraliza as URLs para os dois leitores do app.
+- `dataFetching.ts` consulta o índice publicado e seleciona a aba de nome exato
+  **GERAL**. A aba OFF - GERAL nunca é combinada com ela.
+- Se o índice estiver indisponível, usa o ID conferido acima. Se o índice estiver
+  legível e GERAL não estiver publicada, exibe um erro explicativo.
+- A leitura usa nomes de cabeçalhos; `Atribuição` e `Subfunil` podem estar em
+  posições diferentes da planilha antiga. As novas colunas AF/AG são reconhecidas.
+- Os leads vêm da GERAL, sem acrescentar as exportações auxiliares antigas de
+  formulário nativo. A reconciliação de duplicados por contato e funil foi mantida.
+- A atribuição explícita da GERAL tem prioridade. Um código de evento isolado
+  (PRO-E038-GOI/PRO-E039-SP) não transforma um lead de GD em Meteórico.
+- Conforme o ZIP, no Meteórico a qualificação considera renda acima de R$ 5.000
+  ou `clint=SIM`; nos demais funis a regra existente de `clint=SIM` foi preservada.
+- A regra do ZIP que zera ingressos/cadeiras de São Paulo e Goiânia foi mantida.
+- As demais fontes do ZIP, incluindo Cuiabá e os funis perpétuos, foram mantidas.
+
+O fluxo é: Google Sheets publicado → `/api/csv` → leitura dos cabeçalhos e
+normalização → filtros de período → cálculos → componentes do dashboard.
+O Firebase continua atendendo às configurações e aos testes do aplicativo.
+
+## Publicar na Vercel
+
+O aplicativo permanece na subpasta existente do repositório. Ao importar
+`Trafego-Virtus/dashboard-protagon-gpt`, use:
 
 | Configuração | Valor |
 | --- | --- |
-| Framework Preset | Vite |
+| Root Directory | `Dashboard-Protagon-Vercel` |
+| Framework | Vite |
 | Install Command | `bun install --frozen-lockfile` |
 | Build Command | `npm run build` |
 | Output Directory | `dist` |
 | Node.js | 22.x |
 
-5. Clique em **Deploy**.
-6. Abra o endereço gerado pela Vercel. Use **Atualizar Dados** e selecione o
-   período desejado para conferir as planilhas.
+A API em `api/csv.ts` aceita somente as planilhas publicadas configuradas no app,
+comprime os CSVs e sinaliza falhas em vez de retornar silenciosamente zero.
+As configurações existentes de Firebase e Vercel foram preservadas.
+Não é necessária chave Gemini para ler as planilhas.
 
-Se estiver substituindo um projeto existente, mantenha estes arquivos de
-configuração e selecione como raiz a pasta que contém `package.json`.
-Para enviar pelo navegador do GitHub, use **Add file → Upload files** e arraste
-os arquivos e pastas descompactados. Inclua o `bun.lock`, que fixa as dependências.
-
-## Fontes e configurações
-
-- As mesmas planilhas publicadas do Google Sheets já estão configuradas.
-- A configuração existente do Firebase foi mantida. Para continuar usando o
-  mesmo banco, não é necessário preencher variáveis de ambiente.
-- Para usar outro Firebase, configure na Vercel as variáveis `VITE_FIREBASE_*`
-  listadas em `.env.example` e faça um novo deploy.
-- Alterações nas telas de Testes continuam usando o Firebase compartilhado do
-  projeto original; a configuração de acesso desse banco não foi modificada.
-
-## Ajustes para este deploy
-
-- Build estático do React/Vite, sem adaptador da hospedagem anterior.
-- `/api/csv` é uma função Node.js da Vercel. As rotas do aplicativo não capturam
-  as chamadas da API nem os arquivos de `assets`.
-- As respostas CSV usam compressão gzip sem perda. Isso reduz o volume das
-  planilhas grandes antes de a função enviar a resposta.
-- A API tem até três tentativas, limite de tempo por consulta, respostas sem
-  cache HTTP e erro 502 quando o Google não responde.
-- O endpoint aceita somente as planilhas publicadas configuradas no aplicativo.
-  A lista é regenerada pelo build se as fontes em `src/` forem atualizadas.
-- As correções de contagem e a atualização a cada cinco minutos foram mantidas.
-- Meteórico → Criativos abre em **Todos**, incluindo campanhas pausadas.
-- `node_modules`, arquivos de build, dados CSV locais e arquivos da hospedagem
-  anterior não precisam ser enviados: a Vercel instala e compila o projeto.
-
-## Executar no computador
-
-Use Node.js 22 e Bun para instalar as versões do lockfile:
+## Executar e validar
 
 ```sh
+cd Dashboard-Protagon-Vercel
 bun install --frozen-lockfile
 npm run dev
 ```
 
-Abra `http://localhost:3000`. O servidor local usa a mesma função CSV do deploy.
+Abra `http://localhost:3000`. Para validar e executar o build:
 
 ```sh
 npm run lint
@@ -75,17 +77,8 @@ npm run build
 npm run preview
 ```
 
-`preview` serve o build e a rota CSV. Na Vercel, a pasta `dist` e a função em
-`api/` são publicadas pela plataforma; não é necessário iniciar `server.ts`.
-
-## Validação deste pacote
-
-Instalação com lockfile, verificação TypeScript, build de produção e testes das
-contagens, filtros de criativos, compressão e tratamento de falhas da API.
-O deploy na conta Vercel será realizado ao importar o seu repositório.
-
-Documentação utilizada:
-- https://vercel.com/docs/frameworks/frontend/vite
-- https://vercel.com/docs/functions/runtimes/node-js
-- https://vercel.com/docs/functions/limitations
-- https://vercel.com/docs/project-configuration/vercel-json
+O dashboard permite atualização manual e reconsulta a cada cinco minutos enquanto
+está visível. A publicação do Google Sheets também pode ter atraso próprio.
+Os testes cobrem seleção da GERAL, exclusão da aba antiga, cabeçalhos, contagens,
+atribuição, filtros de criativos, cache e falhas da API. Usam dados sintéticos;
+as bases de leads e os arquivos temporários do ZIP não fazem parte do código.

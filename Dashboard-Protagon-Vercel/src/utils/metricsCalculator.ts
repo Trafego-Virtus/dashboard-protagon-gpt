@@ -1,4 +1,4 @@
-import { parseDate, parseCurrency, parseNumber } from './format';
+import { parseDate, parseCurrency, parseNumber, isRendaAcima5k } from './format';
 import { RawDashboardData } from './dataFetching';
 import { deduplicateLeads } from './leadData';
 import { isAfter, isBefore, isEqual, parseISO } from 'date-fns';
@@ -29,7 +29,61 @@ export interface ProcessedMetrics {
     ingressos: number;
     leads: number;
     mqls: number;
+    impressoes: number;
+    cliques: number;
+    alcance: number;
+    pageViews: number;
+    ctr: number;
+    cpc: number;
+    connectRate: number;
+    conversaoPagina: number;
+    frequencia: number;
     chartData: any[];
+    leadsData?: any[];
+    creativesByPage?: { [page: string]: any[] };
+    funilPages?: Array<{
+      page: string;
+      investimento: number;
+      impressoes: number;
+      cliques: number;
+      pageViews: number;
+      leads: number;
+      mqls: number;
+      cpm: number;
+      ctr: number;
+      cpc: number;
+      connectRate: number;
+      conversaoPagina: number;
+      custoPorLead: number;
+      qualificacao: number;
+      cpmql: number;
+    }>;
+    publicos?: Array<{
+      nome: string;
+      investimento: number;
+      impressoes: number;
+      cliques: number;
+      leads: number;
+      custoPorLead: number;
+      mqls: number;
+      custoPorMql: number;
+      qualificacao: number;
+      pesquisa: any[];
+    }>;
+    leadsByPage?: { [page: string]: any[] };
+    sendflow?: {
+      hasData: boolean;
+      totalPessoas: number;
+      custoPorPessoa: number;
+      taxaEntrada: number;
+      chartData: Array<{
+        date: string;
+        pessoasNoGrupo: number;
+        custoPorPessoaNoGrupo: number;
+        taxaEntrada: number;
+        investimento: number;
+      }>;
+    };
   };
   demanda: {
     investimento: number;
@@ -168,7 +222,98 @@ const formatDateToString = (d: Date) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-export function processDashboardMetrics(rawData: RawDashboardData, startDateStr: string, endDateStr: string, audienceTemp: 'all' | 'quente' | 'frio' = 'all'): ProcessedMetrics {
+/**
+ * Special exception for Goiânia campaign C016 which was accidentally named with [PG04]
+ * instead of [PG01]:
+ * C016 - [METEÓRICO] [PRO-E038-GOI] [LEADS] [ABO] [QUENTE] [TESTE-CRIATIVOS] [ESTÁTICOS] [PG04] [GOIAS] [CAPTURA] [1-X-1] Estrutura Padrão de Testes - 09.10.26
+ */
+export const isC016GoianiaMistagged = (str: string): boolean => {
+  if (!str) return false;
+  let decoded = str;
+  try {
+    decoded = decodeURIComponent(str);
+  } catch (_) {}
+  const upper = (str + ' ' + decoded).toUpperCase();
+  return upper.includes('C016') && upper.includes('PRO-E038-GOI') && (upper.includes('PG04') || upper.includes('PG-04') || upper.includes('PG 04') || upper.includes('09.10.26'));
+};
+
+/**
+ * Detects if a lead belongs to the Meteórico funnel across all cities/praças.
+ * Supports explicit Atribuição / Subfunil, utm_campaign, acao, and pageurl.
+ */
+export const isLeadMeteorico = (r: any): boolean => {
+  if (!r) return false;
+  const atr = String(r['Atribuição'] || r['atribuição'] || r['Atribuicao'] || r['atribuicao'] || '').toLowerCase();
+  if (atr.includes('meteórico') || atr.includes('meteorico')) return true;
+  if (atr.trim()) return false;
+  
+  const sub = String(r['Subfunil'] || r['subfunil'] || r['sub_funil'] || r['Tipo de Funil'] || r['tipo de funil'] || '').toLowerCase();
+  if (sub.includes('meteórico') || sub.includes('meteorico')) return true;
+  
+  const camp = String(r['utm_campaign'] || r['Utm Campaign'] || r['UTM Campaign'] || r['campaign'] || '').toLowerCase();
+  if (camp.includes('meteórico') || camp.includes('meteorico')) return true;
+  
+  const acao = String(r['acao'] || r['Acao'] || r['Ação'] || r['ação'] || '').toLowerCase();
+  if (acao.includes('meteórico') || acao.includes('meteorico')) return true;
+
+  const pageurl = String(r['pageurl'] || r['Page URL'] || r['page_url'] || r['PageUrl'] || '').toLowerCase();
+  if (pageurl.includes('meteorico') || pageurl.includes('meteórico')) return true;
+
+  const tags = String(r['tags'] || r['Tags'] || '').toLowerCase();
+  if (tags.includes('meteórico') || tags.includes('meteorico')) return true;
+
+  const prod = String(r['produto'] || r['Produto'] || '').toLowerCase();
+  if (prod.includes('meteórico') || prod.includes('meteorico')) return true;
+
+  return false;
+};
+
+/**
+ * Extracts the clean audience/publico name from an ad set name or utm_term.
+ * E.g. "00 - [17] [IG] [AUTO] [PERSONALIZADO] Envolvimento 365D [25 - 54] [GOIAS] - 09.10.26" -> "Envolvimento 365D"
+ */
+export const extractPublicoName = (str: string): string => {
+  if (!str) return '';
+  let clean = str.trim();
+  // Decode if URL encoded
+  try {
+    clean = decodeURIComponent(clean);
+  } catch (_) {}
+
+  // Match after known bracket prefixes like [PERSONALIZADO], [ABERTO], [SEMELHANTE], etc.
+  const matchKnown = clean.match(/\[(?:PERSONALIZADO|ABERTO|SEMELHANTE|INTERESSE|INTERESSES|LOOKALIKE|CUSTOM|PURCHASERS)\]\s*([^\[\]]+?)\s*\[/i);
+  if (matchKnown && matchKnown[1].trim()) {
+    return matchKnown[1].trim();
+  }
+
+  // Look for text between closing bracket and opening bracket: `] text [`
+  const allMatches = [...clean.matchAll(/\]\s*([^\[\]]+?)\s*\[/g)];
+  for (const m of allMatches) {
+    const text = m[1].trim();
+    if (text.length > 2 && !/^(IG|FB|AUTO|MANUAL|CBO|ABO|\d+)$/i.test(text)) {
+      return text;
+    }
+  }
+
+  // If ends with date after a dash: `] Text - DD.MM.YY`
+  const matchTrailing = clean.match(/\]\s*([^\[\]]+?)\s*(?:-\s*\d{2}\.\d{2}\.\d{2}|$)/);
+  if (matchTrailing && matchTrailing[1].trim()) {
+    const text = matchTrailing[1].trim();
+    if (text.length > 2 && !/^(IG|FB|AUTO|MANUAL|CBO|ABO|\d+)$/i.test(text)) {
+      return text;
+    }
+  }
+
+  return clean;
+};
+
+export function processDashboardMetrics(
+  rawData: RawDashboardData,
+  startDateStr: string,
+  endDateStr: string,
+  audienceTemp: 'all' | 'quente' | 'frio' = 'all',
+  meteoricoCampType: 'all' | 'escala' | 'teste' = 'all'
+): ProcessedMetrics {
   if (!startDateStr || !endDateStr) return {} as ProcessedMetrics;
   
   // Parse 'yyyy-MM-dd' locally to avoid UTC timezone offsets shifting the day backwards
@@ -210,10 +355,26 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
     return true;
   };
 
+  const filterMeteoricoTrafficCamp = (r: any) => {
+    if (meteoricoCampType === 'all') return true;
+    const camp = String(r['NOME DA CAMPANHA'] || r['Nome da Campanha'] || '').toUpperCase();
+    if (meteoricoCampType === 'escala') return camp.includes('ESCALA');
+    if (meteoricoCampType === 'teste') return camp.includes('TESTE');
+    return true;
+  };
+
+  const filterMeteoricoLeadCamp = (r: any) => {
+    if (meteoricoCampType === 'all') return true;
+    const camp = String(r['utm_campaign'] || '').toUpperCase();
+    if (meteoricoCampType === 'escala') return camp.includes('ESCALA');
+    if (meteoricoCampType === 'teste') return camp.includes('TESTE');
+    return true;
+  };
+
   const fGeral = deduplicateLeads(rawData.geral.filter(row =>
     isWithinDateRange(row['data_hora'] || '', start, end)
   ));
-  const fMet = rawData.met.filter(r => isWithinDateRange(r['Data'] || '', start, end));
+  const fMet = rawData.met.filter(r => isWithinDateRange(r['Data'] || '', start, end) && filterMeteoricoTrafficCamp(r));
   const fVd = rawData.vd.filter(r => isWithinDateRange(r['Data'] || '', start, end));
   const fGd = rawData.gd.filter(r => isWithinDateRange(r['Data'] || '', start, end));
   
@@ -258,6 +419,7 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
   const fDcRemarketing = fDc.filter(r => (r['Atribuição'] || '').toLowerCase() === 'remarketing');
   const fDcCorredor = mappedDcCorredor.filter(r => isWithinDateRange(r['Data'] || '', start, end));
   const fIngressos = (rawData.ingressos || []).filter(r => !isTestOrDummyRow(r) && isWithinDateRange(r['Data Compra'] || r['Data'] || '', start, end));
+  const fSendflow = (rawData.sendflowTrafego || []).filter(r => isWithinDateRange(r['data'] || r['Data'] || '', start, end));
 
   const countTicketTypes = (ingressosList: any[]) => {
     let executivo = 0;
@@ -514,20 +676,39 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
     return subfunil.includes('inlead');
   };
 
-  const leadsMet = fGeral.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico') || (r['Atribuição'] || '').toLowerCase().includes('meteorico'));
+  const leadsMet = fGeral.filter(r =>
+    isLeadMeteorico(r) &&
+    filterMeteoricoLeadCamp(r)
+  );
   const leadsDemanda = fGeral.filter(r => {
+    if (isLeadMeteorico(r)) return false;
     const atr = (r['Atribuição'] || '').toLowerCase();
     const sub = (r['Subfunil'] || r['subfunil'] || '').toLowerCase();
     return atr.includes('geração de demanda') || atr.includes('geracao de demanda') || sub.includes('inlead');
   });
   
-  const allLeadsVD = fGeral.filter(r => (r['Atribuição'] || '').toLowerCase().includes('venda direta'));
+  const allLeadsVD = fGeral.filter(r => {
+    if (isLeadMeteorico(r)) return false;
+    return (r['Atribuição'] || '').toLowerCase().includes('venda direta');
+  });
   const leadsVDTrafego = allLeadsVD.filter(r => {
     const at = (r['Atribuição'] || '').toLowerCase();
     return at.includes('tráfego') || at.includes('trafego') || at.includes('pago');
   });
 
-  const getMqls = (leads: any[]) => leads.filter(r => String(r['clint'] || '').trim().toUpperCase() === 'SIM');
+  const isMqlLead = (r: any) => {
+    const isMet = isLeadMeteorico(r);
+    
+    // For Meteórico: consider MQLs income ranges above R$ 5.000 or clint === 'SIM'
+    if (isMet) {
+      const rendaVal = r['renda'] || r['Renda'] || r['faturamento'] || r['qual_é_seu_faturamento_mensal_atual?'] || '';
+      if (rendaVal && isRendaAcima5k(rendaVal)) return true;
+    }
+    
+    return String(r['clint'] || '').trim().toUpperCase() === 'SIM';
+  };
+
+  const getMqls = (leads: any[]) => leads.filter(isMqlLead);
   
   const isCaptura = (r: any) => {
     if (isInlead(r)) return false;
@@ -574,6 +755,17 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
   
   // MET
   const invMet = fMet.reduce((acc, r) => acc + parseCurrency(r['Valor Gasto'] || '0'), 0);
+  const impressoesMet = fMet.reduce((acc, r) => acc + parseNumber(r['Impressões'] || '0'), 0);
+  const cliquesMet = fMet.reduce((acc, r) => acc + parseNumber(r['Cliques'] || r['Cliques no link'] || r['Cliques no Link'] || '0'), 0);
+  const alcanceMet = fMet.reduce((acc, r) => acc + parseNumber(r['Alcance'] || r['alcance'] || r['ALCANCE'] || '0'), 0);
+  const pageViewsMet = fMet.reduce((acc, r) => acc + parseNumber(r['Visualizações de página de destino'] || r['Page Views'] || r['Pageviews'] || '0'), 0);
+
+  const ctrMet = impressoesMet > 0 ? (cliquesMet / impressoesMet) * 100 : 0;
+  const cpcMet = cliquesMet > 0 ? invMet / cliquesMet : 0;
+  const connectRateMet = cliquesMet > 0 ? (pageViewsMet / cliquesMet) * 100 : 0;
+  const conversaoPaginaMet = pageViewsMet > 0 ? (leadsMet.length / pageViewsMet) * 100 : 0;
+  const frequenciaMet = alcanceMet > 0 ? impressoesMet / alcanceMet : 0;
+
   const fatMet = fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico')).reduce((acc, r) => acc + parseCurrency(r['Fat. Líquido - Principal'] || '0'), 0);
   const ingMet = fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico')).length;
 
@@ -655,7 +847,10 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
         view95: 0,
         pvs: 0,
         ingressos: 0,
-        faturamento: 0
+        faturamento: 0,
+        pessoasNoGrupo: 0,
+        custoPorPessoaNoGrupo: 0,
+        taxaEntrada: 0
       });
     });
 
@@ -709,14 +904,74 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
   };
 
   const allDates = new Set<string>();
-  for (const d of [fGeral, fIngressos, fMet, fVd, fGd, fDc, fDcCorredor]) {
+  for (const d of [fGeral, fIngressos, fMet, fVd, fGd, fDc, fDcCorredor, fSendflow]) {
     d.forEach(r => {
-      const pd = parseDate(r['data_hora'] || r['Data'] || r['Data Compra'] || '');
+      const pd = parseDate(r['data_hora'] || r['Data'] || r['data'] || r['Data Compra'] || '');
       if (pd) allDates.add(formatDateToString(pd));
     });
   }
   
   const chartMET = buildDaily(allDates, leadsMet, getMqls(leadsMet), fMet, fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico')));
+
+  // --- SENDFLOW (WHATSAPP GROUPS) AGGREGATION & CHART DECORATION ---
+  const parsePercent = (val: any): number => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    const clean = String(val).replace('%', '').replace(/\s+/g, '').replace(',', '.');
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const hasSendflowData = fSendflow.length > 0;
+  let totalSendflowPessoas = 0;
+  let sendflowTentadas = 0;
+  const sendflowByDate = new Map<string, { pessoas: number; taxa: number }>();
+
+  fSendflow.forEach(r => {
+    const dStr = r['data'] || r['Data'] || '';
+    const pd = parseDate(dStr);
+    const dateKey = pd ? formatDateToString(pd) : null;
+    const pessoas = parseNumber(r['pessoas no grupo'] || r['Pessoas no Grupo'] || r['pessoas'] || '0');
+    const taxa = parsePercent(r['tx. entrada nos grupos'] || r['Tx. entrada nos grupos'] || r['taxa'] || '0');
+
+    totalSendflowPessoas += pessoas;
+    if (taxa > 0) {
+      sendflowTentadas += pessoas / (taxa / 100);
+    } else if (pessoas > 0) {
+      sendflowTentadas += pessoas;
+    }
+
+    if (dateKey) {
+      sendflowByDate.set(dateKey, { pessoas, taxa });
+    }
+  });
+
+  const taxaEntradaMedia = sendflowTentadas > 0
+    ? (totalSendflowPessoas / sendflowTentadas) * 100
+    : (fSendflow.length > 0 ? fSendflow.reduce((acc, r) => acc + parsePercent(r['tx. entrada nos grupos'] || '0'), 0) / fSendflow.length : 0);
+
+  const custoPorPessoaNoGrupo = totalSendflowPessoas > 0 ? invMet / totalSendflowPessoas : 0;
+
+  chartMET.forEach(day => {
+    const sf = sendflowByDate.get(day.date);
+    if (sf) {
+      day.pessoasNoGrupo = sf.pessoas;
+      day.taxaEntrada = sf.taxa;
+      day.custoPorPessoaNoGrupo = sf.pessoas > 0 ? (day.investimento > 0 ? day.investimento / sf.pessoas : 0) : 0;
+    } else {
+      day.pessoasNoGrupo = 0;
+      day.taxaEntrada = 0;
+      day.custoPorPessoaNoGrupo = 0;
+    }
+  });
+
+  const sendflowChartData = chartMET.map(d => ({
+    date: d.date,
+    pessoasNoGrupo: d.pessoasNoGrupo || 0,
+    custoPorPessoaNoGrupo: d.custoPorPessoaNoGrupo || 0,
+    taxaEntrada: d.taxaEntrada || 0,
+    investimento: d.investimento || 0
+  }));
   const chartVD = buildDaily(allDates, allLeadsVD, getMqls(allLeadsVD), fVd, allIngVd);
   const chartGdForm = buildDaily(allDates, leadsDemandaForm, getMqls(leadsDemandaForm), fGdForm, ingressosGdFormList);
   const chartGdCaptura = buildDaily(allDates, leadsDemandaCaptura, getMqls(leadsDemandaCaptura), fGdCaptura, ingressosGdCapturaList);
@@ -812,27 +1067,155 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
     return content;
   };
 
-  // Process creatives for GD Form and GD Captura
-  const getCreatives = (metaSubset: any[], leadsSubset: any[], ingressosSubset: any[], allMetaForLookup: any[], unfilteredMetaSubset: any[] = []) => {
-    const globalCreativeInfo = new Map<string, { thumbnail: string, link: string, originalName: string }>();
-    if (allMetaForLookup) {
-      allMetaForLookup.forEach(r => {
-        const nome = (r['NOME DO ANÚNCIO'] || r['Nome do Anúncio'] || '').trim();
-        if (!nome) return;
-        const lowerNome = nome.toLowerCase();
-        if (!globalCreativeInfo.has(lowerNome)) {
-          globalCreativeInfo.set(lowerNome, {
-            originalName: nome,
-            thumbnail: (r['Creative Thumbnail'] || '').trim(),
-            link: (r['Creative Instagram Permalink'] || '').trim()
-          });
-        } else {
-           const existing = globalCreativeInfo.get(lowerNome)!;
-           if (!existing.thumbnail && (r['Creative Thumbnail'] || '').trim()) existing.thumbnail = (r['Creative Thumbnail'] || '').trim();
-           if (!existing.link && (r['Creative Instagram Permalink'] || '').trim()) existing.link = (r['Creative Instagram Permalink'] || '').trim();
+  // Helper to extract thumbnail from any possible row structure/column name
+  const getRowThumbnail = (r: any): string => {
+    if (!r) return '';
+    return (
+      r['Creative Thumbnail'] ||
+      r['creative_thumbnail'] ||
+      r['Thumbnail'] ||
+      r['thumbnail'] ||
+      r['Creative Preview URL'] ||
+      r['Preview URL'] ||
+      r['preview_url'] ||
+      r['Image URL'] ||
+      r['URL da Imagem'] ||
+      r['Imagem'] ||
+      r['imagem'] ||
+      ''
+    ).trim();
+  };
+
+  // Helper to extract creative permalink from any possible row structure/column name
+  const getRowLink = (r: any): string => {
+    if (!r) return '';
+    const raw = (
+      r['Creative Instagram Permalink'] ||
+      r['creative_instagram_permalink'] ||
+      r['Instagram Permalink'] ||
+      r['instagram_permalink'] ||
+      r['Permalink'] ||
+      r['permalink'] ||
+      r['Link do Criativo'] ||
+      r['link_do_criativo'] ||
+      r['Link do Anúncio'] ||
+      r['Link do Anuncio'] ||
+      r['link_do_anuncio'] ||
+      r['Link'] ||
+      r['link'] ||
+      r['URL'] ||
+      r['url'] ||
+      r['Ver anúncio'] ||
+      r['Ver Anúncio'] ||
+      ''
+    ).trim();
+    if (raw && !raw.startsWith('http://') && !raw.startsWith('https://') && (raw.includes('instagram.com') || raw.includes('facebook.com') || raw.includes('fb.me'))) {
+      return `https://${raw}`;
+    }
+    return raw;
+  };
+
+  const extractAdCode = (name: string): string => {
+    if (!name) return '';
+    const match = name.match(/\[(AD#?\d+)\]/i) || name.match(/\b(AD#?\d+)\b/i);
+    return match ? match[1].replace('#', '').toUpperCase() : '';
+  };
+
+  const cleanAdName = (name: string): string => {
+    if (!name) return '';
+    return name
+      .toLowerCase()
+      .replace(/[—–-]\s*c[óo]pia/gi, '')
+      .replace(/_[cC]\d+/g, '')
+      .replace(/_[cC][tT][aA]\d+/g, '')
+      .replace(/\s*\(\d+\)$/g, '')
+      .trim();
+  };
+
+  // Combined meta lookup across all sources for maximum coverage of creative assets
+  const allMetaLookupList = [
+    ...(rawData.met || []),
+    ...(rawData.vd || []),
+    ...(rawData.gd || []),
+    ...(rawData.dc || []),
+    ...(rawData.dcCorredor || []),
+    ...(rawData.workshop || []),
+    ...(rawData.webinario || []),
+    ...(rawData.main || [])
+  ];
+
+  // Process creatives for any subfunnel
+  const getCreatives = (metaSubset: any[], leadsSubset: any[], ingressosSubset: any[], allMetaForLookup: any[] = allMetaLookupList, unfilteredMetaSubset: any[] = []) => {
+    const combinedLookup = (allMetaForLookup && allMetaForLookup.length > 0) ? allMetaForLookup : allMetaLookupList;
+    
+    const globalInfoByName = new Map<string, { thumbnail: string, link: string, originalName: string }>();
+    const globalInfoByClean = new Map<string, { thumbnail: string, link: string, originalName: string }>();
+    const globalInfoById = new Map<string, { thumbnail: string, link: string, originalName: string }>();
+    const globalInfoByCode = new Map<string, { thumbnail: string, link: string, originalName: string }>();
+
+    if (combinedLookup) {
+      combinedLookup.forEach(r => {
+        const nome = (r['NOME DO ANÚNCIO'] || r['Nome do Anúncio'] || r['Nome do anúncio'] || r['nome_do_anuncio'] || r['Ad Name'] || r['ad_name'] || '').trim();
+        const thumbnail = getRowThumbnail(r);
+        const link = getRowLink(r);
+        if (!nome && !thumbnail && !link) return;
+
+        const info = {
+          originalName: nome || 'Criativo',
+          thumbnail: thumbnail,
+          link: link
+        };
+
+        if (nome) {
+          const lowerNome = nome.toLowerCase();
+          if (!globalInfoByName.has(lowerNome) || (!globalInfoByName.get(lowerNome)!.thumbnail && thumbnail)) {
+            globalInfoByName.set(lowerNome, info);
+          }
+          const cl = cleanAdName(nome);
+          if (cl && (!globalInfoByClean.has(cl) || (!globalInfoByClean.get(cl)!.thumbnail && thumbnail))) {
+            globalInfoByClean.set(cl, info);
+          }
+          const code = extractAdCode(nome);
+          if (code && (!globalInfoByCode.has(code) || (!globalInfoByCode.get(code)!.thumbnail && thumbnail))) {
+            globalInfoByCode.set(code, info);
+          }
+        }
+
+        const adId = String(r['ID ANÚNCIO'] || r['ID Anúncio'] || r['id_anuncio'] || r['Ad ID'] || r['ad_id'] || '').trim();
+        if (adId) {
+          if (!globalInfoById.has(adId) || (!globalInfoById.get(adId)!.thumbnail && thumbnail)) {
+            globalInfoById.set(adId, info);
+          }
+          if (!globalInfoById.has(adId.toLowerCase()) || (!globalInfoById.get(adId.toLowerCase())!.thumbnail && thumbnail)) {
+            globalInfoById.set(adId.toLowerCase(), info);
+          }
         }
       });
     }
+
+    const findCreativeInfo = (targetName: string) => {
+      if (!targetName) return null;
+      const targetLower = targetName.toLowerCase().trim();
+      if (globalInfoByName.has(targetLower)) return globalInfoByName.get(targetLower)!;
+      
+      const cl = cleanAdName(targetLower);
+      if (cl && globalInfoByClean.has(cl)) return globalInfoByClean.get(cl)!;
+
+      if (globalInfoById.has(targetName.trim())) return globalInfoById.get(targetName.trim())!;
+      if (globalInfoById.has(targetLower)) return globalInfoById.get(targetLower)!;
+
+      const code = extractAdCode(targetName);
+      if (code && globalInfoByCode.has(code)) return globalInfoByCode.get(code)!;
+
+      // Fallback substring search
+      for (const [key, val] of globalInfoByName.entries()) {
+        if (key.length > 8 && (key.includes(targetLower) || targetLower.includes(key))) {
+          return val;
+        }
+      }
+      return null;
+    };
+
     const creativesMap = new Map<string, any>();
     // Case-insensitive mapping from lowercase name to actual stored object
     const lowerToCreative = new Map<string, any>();
@@ -855,11 +1238,11 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
       return 0;
     };
 
-    const subsetForActive = unfilteredMetaSubset.length > 0 ? unfilteredMetaSubset : allMetaForLookup;
-    // ALWAYS GET THE ABSOLUTE MAX DATE FROM THE FULL UNFILTERED CSV (allMetaForLookup)
+    const subsetForActive = unfilteredMetaSubset.length > 0 ? unfilteredMetaSubset : combinedLookup;
+    // ALWAYS GET THE ABSOLUTE MAX DATE FROM THE FULL UNFILTERED CSV (combinedLookup)
     // This ensures that "today" means the last day of the whole file, not just the last day this specific subfunnel had traffic.
-    if (allMetaForLookup) {
-      allMetaForLookup.forEach(r => {
+    if (combinedLookup) {
+      combinedLookup.forEach(r => {
         const d = r['Data'] || r['data'] || r['DATA'] || '';
         const t = parseAnyDate(d);
         if (t > maxDateObj) maxDateObj = t;
@@ -885,18 +1268,20 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
 
     const ensureCreative = (nome: string) => {
       if (!nome) return null;
-      const lowerNome = nome.toLowerCase();
+      const lowerNome = nome.toLowerCase().trim();
       if (!lowerToCreative.has(lowerNome)) {
-        const globalInfo = globalCreativeInfo.get(lowerNome);
+        const globalInfo = findCreativeInfo(nome);
         const newAd = {
-          ativo: activeCreativesGlobal.has(lowerNome), lastDate: '',
-          nome: globalInfo ? globalInfo.originalName : nome,
-          thumbnail: globalInfo ? globalInfo.thumbnail : '',
-          link: globalInfo ? globalInfo.link : '',
+          ativo: activeCreativesGlobal.has(lowerNome) || (globalInfo ? activeCreativesGlobal.has(globalInfo.originalName.toLowerCase()) : false),
+          lastDate: '',
+          nome: globalInfo?.originalName || nome,
+          thumbnail: globalInfo?.thumbnail || '',
+          link: globalInfo?.link || '',
           investimento: 0,
           cliques: 0,
           impressoes: 0,
           alcance: 0,
+          pageViews: 0,
           view3s: 0,
           view25: 0,
           view50: 0,
@@ -939,6 +1324,7 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
       ad.cliques += parseNumber(r['Cliques no link'] || r['Cliques'] || '0');
       ad.impressoes += parseNumber(r['Impressões'] || '0');
       ad.alcance += parseNumber(getAlcance(r));
+      ad.pageViews += parseNumber(r['Page Views'] || r['Visualizações de página de destino'] || r['Visualizações da Página de Destino'] || r['Pageviews'] || '0');
       ad.view3s += parseNumber(r['View 3s'] || r['Reproduções de vídeo de 3 segundos'] || r['Reproduções contínuas de vídeo de 2 segundos'] || '0');
       ad.view25 += parseNumber(r['View 25%'] || r['View 2%'] || r['Reproduções a 25%'] || r['Reproduções do vídeo a 25%'] || r['Reproduções de vídeo a 25%'] || '0');
       ad.view50 += parseNumber(r['View 50%'] || r['Reproduções a 50%'] || r['Reproduções do vídeo a 50%'] || r['Reproduções de vídeo a 50%'] || '0');
@@ -955,8 +1341,12 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
         if (!ad.campanhas.includes(nomeCampanha)) ad.campanhas.push(nomeCampanha);
       }
       ad.visitasPerfil += parseNumber(r['Visitas ao Perfil'] || '0');
-      if (!ad.thumbnail && (r['Creative Thumbnail'] || '').trim()) ad.thumbnail = (r['Creative Thumbnail'] || '').trim();
-      if (!ad.link && (r['Creative Instagram Permalink'] || '').trim()) ad.link = (r['Creative Instagram Permalink'] || '').trim();
+      
+      const rowThumb = getRowThumbnail(r);
+      const rowLink = getRowLink(r);
+      if (!ad.thumbnail && rowThumb) ad.thumbnail = rowThumb;
+      if (!ad.link && rowLink) ad.link = rowLink;
+      
       const rDate = r['Data'] || r['data'] || r['DATA'] || '';
       if (rDate >= ad.lastDate) {
         ad.lastDate = rDate;
@@ -1003,6 +1393,11 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
               ad.rendaAcima5k++;
             }
           }
+          
+          const leadThumb = getRowThumbnail(l);
+          const leadLink = getRowLink(l);
+          if (!ad.thumbnail && leadThumb) ad.thumbnail = leadThumb;
+          if (!ad.link && leadLink) ad.link = leadLink;
         }
       }
     });
@@ -1022,8 +1417,25 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
         if (ad) ad.ingressos++;
       }
     });
+
+    // Final pass to guarantee thumbnail and link are populated from allMetaLookupList
+    for (const ad of creativesMap.values()) {
+      if (!ad.thumbnail || !ad.link) {
+        const info = findCreativeInfo(ad.nome);
+        if (info) {
+          if (!ad.thumbnail && info.thumbnail) ad.thumbnail = info.thumbnail;
+          if (!ad.link && info.link) ad.link = info.link;
+        }
+      }
+    }
     
-    return Array.from(creativesMap.values()).filter(ad => ad.investimento > 0 || ad.leads > 0 || ad.ingressos > 0);
+    return Array.from(creativesMap.values())
+      .map(ad => ({
+        ...ad,
+        frequencia: ad.alcance > 0 ? ad.impressoes / ad.alcance : 0,
+        conversaoPagina: ad.pageViews > 0 ? (ad.leads / ad.pageViews) * 100 : (ad.cliques > 0 ? (ad.leads / ad.cliques) * 100 : 0)
+      }))
+      .filter(ad => ad.investimento > 0 || ad.leads > 0 || ad.ingressos > 0);
   };
   
   
@@ -1045,9 +1457,16 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
           const campaignName = (r['NOME DA CAMPANHA'] || r['Nome da Campanha'] || '').toUpperCase();
           const adName = (r['NOME DO ANÚNCIO'] || r['Nome do Anúncio'] || '').toUpperCase();
           
-          let match = campaignName.match(/PG-?\d+/i) || adName.match(/PG-?\d+/i);
-          if (match) {
-            const pg = match[0].toUpperCase().replace('-', '');
+          let pg: string | null = null;
+          if (isC016GoianiaMistagged(campaignName) || isC016GoianiaMistagged(adName)) {
+            pg = 'PG01';
+          } else {
+            const match = campaignName.match(/PG-?\d+/i) || adName.match(/PG-?\d+/i);
+            if (match) {
+              pg = match[0].toUpperCase().replace('-', '');
+            }
+          }
+          if (pg) {
             const pv = parseNumber(r['Visualizações de página de destino'] || r['Page Views'] || r['Pageviews'] || '0');
             
             if (!dailyData.get(d)![pg]) dailyData.get(d)![pg] = { leads: 0, pageviews: 0 };
@@ -1063,9 +1482,16 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
           if (!dailyData.has(d)) dailyData.set(d, {});
           
           const campaign = (r['utm_campaign'] || '').toUpperCase();
-          let match = campaign.match(/PG-?\d+/i);
-          if (match) {
-            const pg = match[0].toUpperCase().replace('-', '');
+          let pg: string | null = null;
+          if (isC016GoianiaMistagged(campaign)) {
+            pg = 'PG01';
+          } else {
+            const match = campaign.match(/PG-?\d+/i);
+            if (match) {
+              pg = match[0].toUpperCase().replace('-', '');
+            }
+          }
+          if (pg) {
             if (!dailyData.get(d)![pg]) dailyData.get(d)![pg] = { leads: 0, pageviews: 0 };
             dailyData.get(d)![pg].leads += 1;
           }
@@ -1256,6 +1682,9 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
 
   const getPageKey = (str: string) => {
     if (!str) return null;
+    if (isC016GoianiaMistagged(str)) {
+      return 'PG01';
+    }
     const match = str.match(/PG-?\d+/i);
     return match ? match[0].toUpperCase().replace('-', '') : null;
   };
@@ -1304,6 +1733,260 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
 
   const inleadPagesBreakdown = Object.values(inleadPagesData).sort((a: any, b: any) => a.page.localeCompare(b.page));
 
+  // --- METEÓRICO PAGES BREAKDOWN (POR PÁGINA PGX) ---
+  const meteoricoPagesData: { [page: string]: any } = {};
+
+  const getPgPageKey = (str?: string, pageurl?: string) => {
+    if (!str && !pageurl) return null;
+    if (str && isC016GoianiaMistagged(str)) {
+      return 'PG01';
+    }
+    if (str) {
+      const match = str.match(/\[?\b(PG-?\s*\d+)\b\]?/i) || str.match(/\[?(PG\d+)\]?/i);
+      if (match) return match[1].toUpperCase().replace(/[-\s]/g, '');
+    }
+    if (pageurl) {
+      const p = pageurl.toLowerCase();
+      if (p.includes('longa') || p.includes('pg04') || p.includes('pg-04')) return 'PG04';
+      if (p.includes('captacao-2') || p.includes('pg02') || p.includes('pg-02')) return 'PG02';
+      if (p.includes('captacao-3') || p.includes('pg03') || p.includes('pg-03')) return 'PG03';
+      if (p.includes('captacao-4') || p.includes('pg04') || p.includes('pg-04')) return 'PG04';
+      if (p.includes('captacao') || p.includes('pg01') || p.includes('pg-01')) return 'PG01';
+    }
+    return null;
+  };
+
+  // 1. Process Traffic (fMet)
+  fMet.forEach(r => {
+    const camp = String(r['NOME DA CAMPANHA'] || r['Nome da Campanha'] || r['campaign_name'] || getCampaignStr(r) || '');
+    const pg = getPgPageKey(camp);
+    if (pg) {
+      if (!meteoricoPagesData[pg]) {
+        meteoricoPagesData[pg] = { page: pg, investimento: 0, impressoes: 0, cliques: 0, pageViews: 0, leads: 0, mqls: 0 };
+      }
+      meteoricoPagesData[pg].investimento += parseCurrency(r['Valor Gasto'] || '0');
+      meteoricoPagesData[pg].impressoes += parseNumber(r['Impressões'] || '0');
+      meteoricoPagesData[pg].cliques += parseNumber(r['Cliques'] || r['Cliques no link'] || r['Cliques no Link'] || '0');
+      meteoricoPagesData[pg].pageViews += parseNumber(r['Page Views'] || r['Visualizações da Página de Destino'] || '0');
+    }
+  });
+
+  // 2. Process Leads (leadsMet)
+  leadsMet.forEach(l => {
+    const camp = String(l['utm_campaign'] || l['Utm Campaign'] || '');
+    const pg = getPgPageKey(camp, l['pageurl']);
+    if (pg) {
+      if (!meteoricoPagesData[pg]) {
+        meteoricoPagesData[pg] = { page: pg, investimento: 0, impressoes: 0, cliques: 0, pageViews: 0, leads: 0, mqls: 0 };
+      }
+      meteoricoPagesData[pg].leads += 1;
+      if (isMqlLead(l)) {
+        meteoricoPagesData[pg].mqls += 1;
+      }
+    }
+  });
+
+  const meteoricoPagesBreakdown = Object.values(meteoricoPagesData).map((d: any) => {
+    const cpm = d.impressoes > 0 ? (d.investimento / d.impressoes) * 1000 : 0;
+    const ctr = d.impressoes > 0 ? (d.cliques / d.impressoes) * 100 : 0;
+    const cpc = d.cliques > 0 ? d.investimento / d.cliques : 0;
+    const connectRate = d.cliques > 0 ? (d.pageViews / d.cliques) * 100 : 0;
+    const conversaoPagina = d.pageViews > 0 ? (d.leads / d.pageViews) * 100 : 0;
+    const custoPorLead = d.leads > 0 ? d.investimento / d.leads : 0;
+    const qualificacao = d.leads > 0 ? (d.mqls / d.leads) * 100 : 0;
+    const cpmql = d.mqls > 0 ? d.investimento / d.mqls : 0;
+    return {
+      ...d,
+      cpm,
+      ctr,
+      cpc,
+      connectRate,
+      conversaoPagina,
+      custoPorLead,
+      qualificacao,
+      cpmql
+    };
+  }).sort((a: any, b: any) => a.page.localeCompare(b.page));
+
+  // Add fifth option 'GERAL' encompassing all pages if there are pages
+  if (meteoricoPagesBreakdown.length > 0) {
+    const totalInvestimento = invMet > 0 ? invMet : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.investimento || 0), 0);
+    const totalImpressoes = impressoesMet > 0 ? impressoesMet : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.impressoes || 0), 0);
+    const totalCliques = cliquesMet > 0 ? cliquesMet : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.cliques || 0), 0);
+    const totalPageViews = pageViewsMet > 0 ? pageViewsMet : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.pageViews || 0), 0);
+    const totalLeads = leadsMet.length > 0 ? leadsMet.length : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.leads || 0), 0);
+    const totalMqls = getMqls(leadsMet).length > 0 ? getMqls(leadsMet).length : meteoricoPagesBreakdown.reduce((acc: number, p: any) => acc + (p.mqls || 0), 0);
+
+    const cpm = totalImpressoes > 0 ? (totalInvestimento / totalImpressoes) * 1000 : 0;
+    const ctr = totalImpressoes > 0 ? (totalCliques / totalImpressoes) * 100 : 0;
+    const cpc = totalCliques > 0 ? totalInvestimento / totalCliques : 0;
+    const connectRate = totalCliques > 0 ? (totalPageViews / totalCliques) * 100 : 0;
+    const conversaoPagina = totalPageViews > 0 ? (totalLeads / totalPageViews) * 100 : 0;
+    const custoPorLead = totalLeads > 0 ? totalInvestimento / totalLeads : 0;
+    const qualificacao = totalLeads > 0 ? (totalMqls / totalLeads) * 100 : 0;
+    const cpmql = totalMqls > 0 ? totalInvestimento / totalMqls : 0;
+
+    meteoricoPagesBreakdown.push({
+      page: 'GERAL',
+      investimento: totalInvestimento,
+      impressoes: totalImpressoes,
+      cliques: totalCliques,
+      pageViews: totalPageViews,
+      leads: totalLeads,
+      mqls: totalMqls,
+      cpm,
+      ctr,
+      cpc,
+      connectRate,
+      conversaoPagina,
+      custoPorLead,
+      qualificacao,
+      cpmql
+    });
+  }
+
+  const creativesMET = getCreatives(
+    fMet.filter(filterAudienceTraffic),
+    leadsMet.filter(filterAudienceGeral),
+    fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico') && filterAudienceIngressos(r)),
+    allMetaLookupList,
+    rawData.met.filter(r => filterAudienceTraffic(r) && filterMeteoricoTrafficCamp(r))
+  );
+
+  const meteoricoCreativesByPage: { [pg: string]: any[] } = {};
+  meteoricoPagesBreakdown.forEach((p: any) => {
+    const pg = p.page;
+    if (pg === 'GERAL') {
+      meteoricoCreativesByPage['GERAL'] = creativesMET;
+      return;
+    }
+    const fMetPg = fMet.filter(r => {
+      const camp = String(r['NOME DA CAMPANHA'] || r['Nome da Campanha'] || r['campaign_name'] || '');
+      return getPgPageKey(camp) === pg;
+    });
+    const leadsMetPg = leadsMet.filter(l => {
+      const camp = String(l['utm_campaign'] || l['Utm Campaign'] || '');
+      return getPgPageKey(camp, l['pageurl']) === pg;
+    });
+    meteoricoCreativesByPage[pg] = getCreatives(
+      fMetPg.filter(filterAudienceTraffic),
+      leadsMetPg.filter(filterAudienceGeral),
+      fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico') && filterAudienceIngressos(r)),
+      allMetaLookupList,
+      rawData.met.filter(r => filterAudienceTraffic(r) && filterMeteoricoTrafficCamp(r))
+    );
+  });
+
+  // Calculate Meteorico Públicos (extract pure audience name from Ad Sets and utm_term)
+  const normTerm = (s: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  
+  // Index filtered Meteórico leads by extracted publico name
+  const metLeadsByPublico = new Map<string, any[]>();
+  leadsMet.filter(filterAudienceGeral).forEach(l => {
+    const rawTerm = String(l['utm_term'] || l['Utm Term'] || '').trim();
+    if (!rawTerm || rawTerm === 'term' || rawTerm === '{{adset.name}}') return;
+    const pubName = extractPublicoName(rawTerm);
+    if (!pubName) return;
+    const key = normTerm(pubName);
+    if (!metLeadsByPublico.has(key)) metLeadsByPublico.set(key, []);
+    metLeadsByPublico.get(key)!.push(l);
+  });
+
+  // Group traffic data by extracted publico name
+  const publicosMap = new Map<string, {
+    nome: string;
+    investimento: number;
+    impressoes: number;
+    cliques: number;
+  }>();
+
+  fMet.filter(filterAudienceTraffic).forEach(r => {
+    const rawAdSet = String(r['NOME DO CONJUNTO'] || r['Nome do Conjunto'] || r['adset_name'] || '').trim();
+    if (!rawAdSet) return;
+    const pubName = extractPublicoName(rawAdSet);
+    if (!pubName) return;
+    const key = normTerm(pubName);
+    if (!publicosMap.has(key)) {
+      publicosMap.set(key, {
+        nome: pubName,
+        investimento: 0,
+        impressoes: 0,
+        cliques: 0
+      });
+    }
+    const item = publicosMap.get(key)!;
+    item.investimento += parseCurrency(r['Valor Gasto'] || '0');
+    item.impressoes += parseNumber(r['Impressões'] || '0');
+    item.cliques += parseNumber(r['Cliques'] || r['Cliques no link'] || r['Cliques no Link'] || '0');
+  });
+
+  // Also ensure any publicos that exist in leads but had 0 traffic in the period are included
+  metLeadsByPublico.forEach((leads, key) => {
+    if (!publicosMap.has(key)) {
+      const pubName = extractPublicoName(leads[0]?.['utm_term'] || leads[0]?.['Utm Term'] || key);
+      publicosMap.set(key, {
+        nome: pubName,
+        investimento: 0,
+        impressoes: 0,
+        cliques: 0
+      });
+    }
+  });
+
+  // Group leads without utm_term as "Direto / Orgânico / Sem utm_term" if any exist
+  const leadsSemTerm = leadsMet.filter(filterAudienceGeral).filter(l => {
+    const rawTerm = String(l['utm_term'] || l['Utm Term'] || '').trim();
+    return !rawTerm || rawTerm === 'term' || rawTerm === '{{adset.name}}';
+  });
+  if (leadsSemTerm.length > 0) {
+    const key = 'direto_organico';
+    metLeadsByPublico.set(key, leadsSemTerm);
+    if (!publicosMap.has(key)) {
+      publicosMap.set(key, {
+        nome: 'Direto / Orgânico / Sem utm_term',
+        investimento: 0,
+        impressoes: 0,
+        cliques: 0
+      });
+    }
+  }
+
+  const meteoricoPublicos = Array.from(publicosMap.entries()).map(([key, pub]) => {
+    const matchedLeads = metLeadsByPublico.get(key) || [];
+    const leadsCount = matchedLeads.length;
+    const mqlsCount = getMqls(matchedLeads).length;
+    const custoPorLead = leadsCount > 0 ? pub.investimento / leadsCount : 0;
+    const custoPorMql = mqlsCount > 0 ? pub.investimento / mqlsCount : 0;
+    const qualificacao = leadsCount > 0 ? (mqlsCount / leadsCount) * 100 : 0;
+
+    return {
+      nome: pub.nome,
+      investimento: pub.investimento,
+      impressoes: pub.impressoes,
+      cliques: pub.cliques,
+      leads: leadsCount,
+      custoPorLead,
+      mqls: mqlsCount,
+      custoPorMql,
+      qualificacao,
+      pesquisa: matchedLeads
+    };
+  }).sort((a, b) => {
+    if (b.investimento !== a.investimento) return b.investimento - a.investimento;
+    return b.leads - a.leads;
+  });
+
+  // Group Meteorico leads by PG (e.g. PG01, PG02, PG03, PG04)
+  const meteoricoLeadsByPage: { [pg: string]: any[] } = {};
+  leadsMet.filter(filterAudienceGeral).forEach(l => {
+    const camp = String(l['utm_campaign'] || l['Utm Campaign'] || '');
+    const pg = getPgPageKey(camp, l['pageurl']);
+    if (pg) {
+      if (!meteoricoLeadsByPage[pg]) meteoricoLeadsByPage[pg] = [];
+      meteoricoLeadsByPage[pg].push(l);
+    }
+  });
+
   return {
     ticketsByTypes: {
       visaoGeral: countTicketTypes(fIngressos),
@@ -1328,7 +2011,28 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
       ingressos: ingMet,
       leads: leadsMet.length,
       mqls: getMqls(leadsMet).length,
+      impressoes: impressoesMet,
+      cliques: cliquesMet,
+      alcance: alcanceMet,
+      pageViews: pageViewsMet,
+      ctr: ctrMet,
+      cpc: cpcMet,
+      connectRate: connectRateMet,
+      conversaoPagina: conversaoPaginaMet,
+      frequencia: frequenciaMet,
       chartData: chartMET,
+      funilPages: meteoricoPagesBreakdown,
+      leadsData: leadsMet,
+      creativesByPage: meteoricoCreativesByPage,
+      publicos: meteoricoPublicos,
+      leadsByPage: meteoricoLeadsByPage,
+      sendflow: {
+        hasData: hasSendflowData,
+        totalPessoas: totalSendflowPessoas,
+        custoPorPessoa: custoPorPessoaNoGrupo,
+        taxaEntrada: taxaEntradaMedia,
+        chartData: sendflowChartData
+      }
     },
     demanda: {
       investimento: invGdForm + invGdCaptura + invGdInlead,
@@ -1398,7 +2102,7 @@ export function processDashboardMetrics(rawData: RawDashboardData, startDateStr:
     creativesCaptura: getCreatives(fGdCaptura.filter(filterAudienceTraffic), leadsDemandaCaptura.filter(filterAudienceGeral), ingressosGdCapturaList.filter(filterAudienceIngressos), rawData.gd, rawData.gd.filter(isCaptura).filter(filterAudienceTraffic)),
     creativesInlead: getCreatives(fGdInlead.filter(filterAudienceTraffic), leadsDemandaInlead.filter(filterAudienceGeral), ingressosGdInleadList.filter(filterAudienceIngressos), rawData.gd, rawData.gd.filter(isInlead).filter(filterAudienceTraffic)),
     creativesVD: getCreatives(fVd.filter(filterAudienceTraffic), allLeadsVD.filter(filterAudienceGeral), ingressosVDTrafegoList.filter(filterAudienceIngressos), rawData.vd, rawData.vd.filter(filterAudienceTraffic)),
-    creativesMET: getCreatives(fMet.filter(filterAudienceTraffic), leadsMet.filter(filterAudienceGeral), fIngressos.filter(r => (r['Atribuição'] || '').toLowerCase().includes('meteórico') && filterAudienceIngressos(r)), rawData.met, rawData.met.filter(filterAudienceTraffic)),
+    creativesMET: creativesMET,
     creativesDC: getCreatives(
       fDc.filter(r => filterAudienceTraffic(r)), 
       [], [], mappedDc, 

@@ -1,9 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { PesquisaRow, CreativeDataRow } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
-import { Filter, X, Eye, EyeOff, Loader2, ExternalLink, Copy, Check, Trophy, Video, ChevronRight } from 'lucide-react';
+import {
+  Filter, X, Eye, EyeOff, Loader2, ExternalLink, Copy, Check, Trophy, Video,
+  ChevronRight, PieChart as PieChartIcon, Users, AlertCircle, FileText
+} from 'lucide-react';
 import { MultiSelect } from './MultiSelect';
+import { LeadsListView } from './LeadsListView';
 
 interface PesquisaAudienciaProps {
   data: PesquisaRow[];
@@ -77,6 +81,24 @@ export function PesquisaAudiencia({ data, creatives, isLoading }: PesquisaAudien
       estado_civil: normalizeCategory(row.estado_civil as string)
     }));
   }, [data]);
+
+  const hasDemographicData = useMemo(() => {
+    return normalizedData.some(row =>
+      (row.renda && String(row.renda).trim() !== '' && String(row.renda).trim() !== '(Vazio)') ||
+      (row.escolaridade && String(row.escolaridade).trim() !== '' && String(row.escolaridade).trim() !== '(Vazio)') ||
+      (row.atuacao && String(row.atuacao).trim() !== '' && String(row.atuacao).trim() !== '(Vazio)') ||
+      (row.estado_civil && String(row.estado_civil).trim() !== '' && String(row.estado_civil).trim() !== '(Vazio)')
+    );
+  }, [normalizedData]);
+
+  const [activeSubTab, setActiveSubTab] = useState<'perfil' | 'leads'>('perfil');
+
+  // If demographic survey answers are missing, automatically default to the leads list
+  useEffect(() => {
+    if (!hasDemographicData && normalizedData.length > 0) {
+      setActiveSubTab('leads');
+    }
+  }, [hasDemographicData, normalizedData.length]);
 
   const [selectedRenda, setSelectedRenda] = useState<string | null>(null);
   const [copiedName, setCopiedName] = useState<string | null>(null);
@@ -269,14 +291,71 @@ export function PesquisaAudiencia({ data, creatives, isLoading }: PesquisaAudien
   }
 
   return (
-    <div className="space-y-8">
-      {/* Filters Section */}
-      <div className="bg-zinc-900/50 p-6 rounded-xl border border-white/10">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2 text-yellow-500">
-            <Filter size={20} />
-            <h2 className="font-bold tracking-tight uppercase">Filtros</h2>
+    <div className="space-y-6">
+      {/* Subtab Switcher: Perfil vs Lista de Leads */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-zinc-900/60 p-2 rounded-xl border border-white/5">
+        <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-lg border border-white/10">
+          <button
+            onClick={() => setActiveSubTab('perfil')}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === 'perfil'
+                ? 'bg-yellow-500 text-zinc-950 shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <PieChartIcon size={14} />
+            <span>Pesquisa de Perfil {hasDemographicData ? `(${normalizedData.filter(r => r.renda).length})` : ''}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('leads')}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === 'leads'
+                ? 'bg-yellow-500 text-zinc-950 shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users size={14} />
+            <span>Lista de Leads ({data.length})</span>
+          </button>
+        </div>
+
+        {!hasDemographicData && (
+          <div className="flex items-center gap-2 text-xs text-yellow-400/90 bg-yellow-500/10 border border-yellow-500/20 px-3 py-1.5 rounded-lg">
+            <AlertCircle size={14} className="shrink-0 text-yellow-500" />
+            <span>Respostas demográficas ainda não preenchidas. Mostrando listagem cadastral dos leads.</span>
           </div>
+        )}
+      </div>
+
+      {activeSubTab === 'leads' ? (
+        <LeadsListView leads={data} />
+      ) : !hasDemographicData ? (
+        <div className="bg-zinc-900 border border-white/5 rounded-2xl p-10 text-center space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-full bg-yellow-500/10 text-yellow-500 flex items-center justify-center mx-auto">
+            <Users className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-white">Leads Capturados Sem Formulário Demográfico</h3>
+          <p className="text-sm text-zinc-400 max-w-xl mx-auto">
+            Os <strong className="text-yellow-400 font-mono">{normalizedData.length} leads</strong> desta seleção se cadastraram diretamente na página de captura (fornecendo Nome, E-mail e WhatsApp), sem responder às perguntas estendidas de renda e escolaridade.
+          </p>
+          <button
+            onClick={() => setActiveSubTab('leads')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-yellow-500 hover:bg-yellow-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors shadow-lg shadow-yellow-500/10"
+          >
+            <Users className="w-4 h-4" />
+            Ver Lista Completa dos {normalizedData.length} Leads
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Filters Section */}
+          <div className="bg-zinc-900/50 p-6 rounded-xl border border-white/10">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2 text-yellow-500">
+                <Filter size={20} />
+                <h2 className="font-bold tracking-tight uppercase">Filtros</h2>
+              </div>
           {hasActiveFilters && (
             <button 
               onClick={clearFilters}
@@ -585,6 +664,8 @@ export function PesquisaAudiencia({ data, creatives, isLoading }: PesquisaAudien
           );
         })}
       </div>
+        </>
+      )}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;

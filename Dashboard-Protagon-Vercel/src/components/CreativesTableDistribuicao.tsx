@@ -254,12 +254,18 @@ export function CreativesTableDistribuicao({ data }: CreativesTableDistribuicaoP
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       {row.thumbnail ? (
-                        <div className="w-12 h-12 rounded bg-zinc-800 border border-white/10 overflow-hidden shrink-0">
-                          <img src={row.thumbnail} alt="thumb" className="w-full h-full object-cover" />
-                        </div>
+                        row.link ? (
+                          <a href={row.link} target="_blank" rel="noopener noreferrer" title="Abrir anúncio" className="w-12 h-12 rounded bg-zinc-800 border border-white/10 overflow-hidden shrink-0 group block">
+                            <img src={row.thumbnail} alt="thumb" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200" />
+                          </a>
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-zinc-800 border border-white/10 overflow-hidden shrink-0">
+                            <img src={row.thumbnail} alt="thumb" className="w-full h-full object-cover" />
+                          </div>
+                        )
                       ) : (
                         <div className="w-12 h-12 rounded bg-zinc-800 border border-white/10 flex items-center justify-center shrink-0">
-                          <span className="text-[10px] text-zinc-500">No Img</span>
+                          <span className="text-[10px] text-zinc-500">Sem img</span>
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
@@ -269,12 +275,21 @@ export function CreativesTableDistribuicao({ data }: CreativesTableDistribuicaoP
                             {copiedName === row.nome ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1.5">
                           <span className={`w-2 h-2 rounded-full ${row.ativo ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                          {row.link && (
-                            <a href={row.link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                              Ver original <ExternalLink size={10} />
+                          {row.link ? (
+                            <a
+                              href={row.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 rounded transition-all shadow-sm"
+                              title="Acessar anúncio original"
+                            >
+                              <ExternalLink size={11} />
+                              <span>Ver anúncio</span>
                             </a>
+                          ) : (
+                            <span className="text-[11px] text-zinc-500 font-medium">Sem link</span>
                           )}
                         </div>
                       </div>

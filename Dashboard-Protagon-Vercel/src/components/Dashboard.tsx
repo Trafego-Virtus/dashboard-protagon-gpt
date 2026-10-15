@@ -17,7 +17,7 @@ import { GDCacPontual } from './GDCacPontual';
 import { fetchRawDashboardData, RawDashboardData, DATA_REFRESH_INTERVAL } from '../utils/dataFetching';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { ProcessedMetrics, processDashboardMetrics } from '../utils/metricsCalculator';
+import { ProcessedMetrics, processDashboardMetrics, isC016GoianiaMistagged } from '../utils/metricsCalculator';
 import { formatCurrency, formatNumber } from '../utils/format';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -31,6 +31,8 @@ import { CreativesTableDistribuicao } from './CreativesTableDistribuicao';
 import { PesquisaAudiencia } from "./PesquisaAudiencia";
 import { AnaliseKPIs } from "./AnaliseKPIs";
 import { DistribuicaoGeralView } from './DistribuicaoGeralView';
+import { MeteoricoFunilView } from './MeteoricoFunilView';
+import { MeteoricoPublicosTable } from './MeteoricoPublicosTable';
 
 interface DashboardProps { onBack?: () => void; dashboardId: DashboardId; onOpenAppMenu?: () => void; }
 
@@ -65,8 +67,10 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
   const [selectedCreativePesquisa, setSelectedCreativePesquisa] = useState<{nome: string; pesquisa: any[]} | null>(null);
   const [showInleadPagesModal, setShowInleadPagesModal] = useState(false);
   const [selectedInleadPageFilter, setSelectedInleadPageFilter] = useState<string>('all');
+  const [selectedMeteoricoPage, setSelectedMeteoricoPage] = useState<string>('all');
 
   const [audienceTemp, setAudienceTemp] = useState<'all' | 'quente' | 'frio'>('all');
+  const [meteoricoCampType, setMeteoricoCampType] = useState<'all' | 'escala' | 'teste'>('all');
 
   const compradoresPesquisa = useMemo(() => {
     if (!metrics || !metrics.ingressosData) return [];
@@ -88,6 +92,82 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
       ...(metrics.creativesDC || [])
     ];
   }, [metrics]);
+
+  const meteoricoPages = useMemo(() => {
+    const list: string[] = [];
+    if (metrics?.meteorico?.funilPages) {
+      metrics.meteorico.funilPages.forEach(p => {
+        if (p.page !== 'GERAL' && !list.includes(p.page)) list.push(p.page);
+      });
+    }
+    if (metrics?.meteorico?.creativesByPage) {
+      Object.keys(metrics.meteorico.creativesByPage).forEach(pg => {
+        if (pg !== 'GERAL' && !list.includes(pg)) list.push(pg);
+      });
+    }
+    if (metrics?.meteorico?.leadsByPage) {
+      Object.keys(metrics.meteorico.leadsByPage).forEach(pg => {
+        if (pg !== 'GERAL' && !list.includes(pg)) list.push(pg);
+      });
+    }
+    return list.sort();
+  }, [metrics]);
+
+  const displayedMeteoricoCreatives = useMemo(() => {
+    if (!metrics?.creativesMET) return [];
+    if (!selectedMeteoricoPage || selectedMeteoricoPage === 'all') {
+      return metrics.creativesMET;
+    }
+    if (metrics.meteorico?.creativesByPage && metrics.meteorico.creativesByPage[selectedMeteoricoPage]) {
+      return metrics.meteorico.creativesByPage[selectedMeteoricoPage];
+    }
+    const filtered = metrics.creativesMET.filter(c => {
+      const inCamp = c.campanhas?.some(camp => {
+        if (isC016GoianiaMistagged(camp)) return selectedMeteoricoPage === 'PG01';
+        return camp.toUpperCase().includes(selectedMeteoricoPage);
+      });
+      const inName = c.nome.toUpperCase().includes(selectedMeteoricoPage);
+      const inLeads = c.pesquisa?.some(lead => {
+        const leadCamp = lead.utm_campaign || '';
+        if (isC016GoianiaMistagged(leadCamp)) return selectedMeteoricoPage === 'PG01';
+        return leadCamp.toUpperCase().includes(selectedMeteoricoPage);
+      });
+      return inCamp || inName || inLeads;
+    });
+    return filtered.length > 0 ? filtered : metrics.creativesMET;
+  }, [metrics, selectedMeteoricoPage]);
+
+  const displayedMeteoricoPesquisaLeads = useMemo(() => {
+    if (!metrics?.meteorico?.leadsData) return [];
+    if (!selectedMeteoricoPage || selectedMeteoricoPage === 'all') {
+      return metrics.meteorico.leadsData;
+    }
+    if (metrics.meteorico?.leadsByPage && metrics.meteorico.leadsByPage[selectedMeteoricoPage]) {
+      return metrics.meteorico.leadsByPage[selectedMeteoricoPage];
+    }
+    return metrics.meteorico.leadsData.filter(lead => {
+      const leadCamp = lead.utm_campaign || lead['Utm Campaign'] || '';
+      if (isC016GoianiaMistagged(leadCamp)) return selectedMeteoricoPage === 'PG01';
+      return leadCamp.toUpperCase().includes(selectedMeteoricoPage) || (lead['pageurl'] || '').toUpperCase().includes(selectedMeteoricoPage);
+    });
+  }, [metrics, selectedMeteoricoPage]);
+
+  // Reset page filters when switching dashboard
+  useEffect(() => {
+    setSelectedMeteoricoPage('all');
+    setSelectedInleadPageFilter('all');
+    setMeteoricoCampType('all');
+    if (dashboardId !== 'protagon-goiania' && datePreset === 'last7') {
+      handlePresetChange('all');
+    }
+  }, [dashboardId]);
+
+  // If selectedMeteoricoPage is not in meteoricoPages, revert to all
+  useEffect(() => {
+    if (selectedMeteoricoPage !== 'all' && !meteoricoPages.includes(selectedMeteoricoPage)) {
+      setSelectedMeteoricoPage('all');
+    }
+  }, [selectedMeteoricoPage, meteoricoPages]);
 
   const handlePresetChange = (preset: string) => {
     setDatePreset(preset);
@@ -186,8 +266,8 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
           prevEndStr = format(prevEnd, 'yyyy-MM-dd');
         }
         
-        const result = processDashboardMetrics(rawData, startDate, endDate, audienceTemp);
-        const prevResult = processDashboardMetrics(rawData, prevStartStr, prevEndStr, audienceTemp);
+        const result = processDashboardMetrics(rawData, startDate, endDate, audienceTemp, meteoricoCampType);
+        const prevResult = processDashboardMetrics(rawData, prevStartStr, prevEndStr, audienceTemp, meteoricoCampType);
         setMetrics(result);
         setPrevMetrics(prevResult);
       } catch (error) {
@@ -196,7 +276,7 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
       setIsCalculating(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [rawData, startDate, endDate, audienceTemp]);
+  }, [rawData, startDate, endDate, audienceTemp, meteoricoCampType]);
 
   if (loading && !metrics) {
     return (
@@ -369,18 +449,12 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
             )}
             <button 
               onClick={() => setRefreshKey(k => k + 1)} 
-              disabled={loading}
               className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap"
               title="Atualizar dados do Google Sheets"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-yellow-500' : 'text-zinc-400'}`} />
               <span className="hidden sm:inline">Atualizar Dados</span>
             </button>
-            {rawData?.fetchedAt && (
-              <span className="text-[10px] text-zinc-500 whitespace-nowrap" title="Horário da última consulta às planilhas; atualização automática a cada 5 minutos">
-                Consultado às {new Date(rawData.fetchedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
-              </span>
-            )}
           </div>
         </div>
       </header>
@@ -401,8 +475,10 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
             {activeTab.startsWith('meteorico') && (
               <div className="xl:ml-4 xl:pl-3 xl:border-l border-white/10 flex flex-row xl:flex-col py-1 gap-2 xl:gap-1">
                 <button onClick={() => { setActiveTab('meteorico-analise'); }} className={`px-2 py-1.5 rounded-md text-xs font-medium text-left ${activeTab === 'meteorico-analise' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Análise de Métricas</button>
-                <button disabled className="px-2 py-1.5 rounded-md text-xs font-medium text-left text-zinc-600 cursor-not-allowed">Funil (Em breve)</button>
+                <button onClick={() => { setActiveTab('meteorico-funil'); }} className={`px-2 py-1.5 rounded-md text-xs font-medium text-left ${activeTab === 'meteorico-funil' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Funil</button>
                 <button onClick={() => { setActiveTab('meteorico-criativos'); }} className={`px-2 py-1.5 rounded-md text-xs font-medium text-left ${activeTab === 'meteorico-criativos' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Criativos</button>
+                <button onClick={() => { setActiveTab('meteorico-publicos'); }} className={`px-2 py-1.5 rounded-md text-xs font-medium text-left ${activeTab === 'meteorico-publicos' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Públicos</button>
+                <button onClick={() => { setActiveTab('meteorico-pesquisa'); }} className={`px-2 py-1.5 rounded-md text-xs font-medium text-left ${activeTab === 'meteorico-pesquisa' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Pesquisa de Audiência</button>
               </div>
             )}
             
@@ -454,6 +530,15 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
 
         {/* Dashboard Content */}
         <main className="flex-1 p-4 overflow-hidden flex flex-col relative">
+          
+          {dashboardId === 'protagon-joinville' && activeTab.startsWith('meteorico') && (
+            <div className="mb-4 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-red-950/40 border border-red-500/30 text-red-300 text-xs shadow-sm">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>
+                <strong className="text-red-200 font-semibold">Aviso:</strong> As vendas que aconteceram dia 08/10/2026 foram realizadas organicamente com leads de grupos de WhatsApp, apesar de estarem vinculadas a este meteórico.
+              </span>
+            </div>
+          )}
           
           {activeTab === 'previsoes' && metrics && (
           <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 pb-20 animate-in fade-in duration-500">
@@ -775,50 +860,148 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
 
           {activeTab === 'meteorico-analise' && metrics && (
              <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 pb-20">
-               <div className="flex justify-between items-end mb-4">
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                  <h2 className="text-xl font-bold tracking-tight border-l-4 border-yellow-500 pl-3 uppercase">Meteórico - Análise</h2>
+                 
+                 {/* Chave de filtro: Todas as Campanhas / Escala / Teste */}
+                 <div className="flex items-center gap-1 bg-zinc-900 border border-white/10 p-1 rounded-xl shadow-inner self-end sm:self-auto">
+                   <span className="text-[11px] font-semibold text-zinc-400 px-2 uppercase tracking-wider hidden sm:inline">
+                     Campanhas:
+                   </span>
+                   <button
+                     onClick={() => setMeteoricoCampType('all')}
+                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                       meteoricoCampType === 'all'
+                         ? 'bg-yellow-500 text-zinc-950 shadow-md'
+                         : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                     }`}
+                   >
+                     Todas
+                   </button>
+                   <button
+                     onClick={() => setMeteoricoCampType('escala')}
+                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                       meteoricoCampType === 'escala'
+                         ? 'bg-emerald-500 text-zinc-950 shadow-md'
+                         : 'text-zinc-400 hover:text-emerald-400 hover:bg-white/5'
+                     }`}
+                   >
+                     <span className={`w-1.5 h-1.5 rounded-full ${meteoricoCampType === 'escala' ? 'bg-zinc-950' : 'bg-emerald-400'}`}></span>
+                     Escala
+                   </button>
+                   <button
+                     onClick={() => setMeteoricoCampType('teste')}
+                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                       meteoricoCampType === 'teste'
+                         ? 'bg-blue-500 text-white shadow-md'
+                         : 'text-zinc-400 hover:text-blue-400 hover:bg-white/5'
+                     }`}
+                   >
+                     <span className={`w-1.5 h-1.5 rounded-full ${meteoricoCampType === 'teste' ? 'bg-white' : 'bg-blue-400'}`}></span>
+                     Teste
+                   </button>
+                 </div>
                </div>
                
                <TicketTypeMetrics data={metrics.ticketsByTypes.meteorico} />
 
+               {metrics.meteorico.sendflow?.hasData && (
+                 <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-4 mb-4 shadow-sm">
+                   <div className="flex items-center justify-between mb-3">
+                     <div className="flex items-center gap-2">
+                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                       <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                         Sendflow WhatsApp ({dashboardId === 'protagon-goiania' ? 'Goiânia' : dashboardId === 'protagon-sao-paulo' ? 'São Paulo' : formatDashboardName(dashboardId)}) - Entrada nos Grupos
+                       </h3>
+                     </div>
+                     <span className="text-[11px] text-zinc-400 hidden sm:inline">
+                       Dados consolidados da aba sendflow_trafego
+                     </span>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                     <MetricCard
+                       title="Pessoas no Grupo"
+                       value={metrics.meteorico.sendflow.totalPessoas}
+                       type="number"
+                     />
+                     <MetricCard
+                       title="Custo por Pessoa no Grupo"
+                       value={metrics.meteorico.sendflow.custoPorPessoa}
+                       type="currency"
+                     />
+                     <MetricCard
+                       title="Taxa de Entrada nos Grupos"
+                       value={`${metrics.meteorico.sendflow.taxaEntrada.toFixed(2)}%`}
+                       type="string"
+                     />
+                   </div>
+                 </div>
+               )}
+
                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
                  <MetricCard title="Investimento" value={metrics.meteorico.investimento} type="currency" />
-                 <MetricCard title="Faturamento" value={metrics.meteorico.faturamento} type="currency" />
-                 <MetricCard title="Ingressos Vendidos" value={metrics.meteorico.ingressos} type="number" />
-                 <MetricCard title="CAC Ingresso" value={metrics.meteorico.ingressos > 0 ? metrics.meteorico.investimento / metrics.meteorico.ingressos : 0} type="currency" />
-                 <MetricCard title="Pace Diário (Ingressos)" value={metrics.meteorico.ingressos / dias} type="number" decimals={2} />
+                 <MetricCard title="CTR" value={`${metrics.meteorico.ctr.toFixed(2)}%`} type="string" />
+                 <MetricCard title="CPC" value={metrics.meteorico.cpc} type="currency" />
+                 <MetricCard title="Connect Rate" value={`${metrics.meteorico.connectRate.toFixed(2)}%`} type="string" />
+                 <MetricCard title="Conversão da Página" value={`${metrics.meteorico.conversaoPagina.toFixed(2)}%`} type="string" />
                  <MetricCard title="Leads (Atrib: Meteórico)" value={metrics.meteorico.leads} type="number" />
                  <MetricCard title="MQLs" value={metrics.meteorico.mqls} type="number" />
+                 <MetricCard title="% Qualificação (MQL/Lead)" value={metrics.meteorico.leads > 0 ? `${((metrics.meteorico.mqls / metrics.meteorico.leads) * 100).toFixed(1)}%` : "0%"} type="string" />
                  <MetricCard title="Custo por Lead" value={metrics.meteorico.leads > 0 ? metrics.meteorico.investimento / metrics.meteorico.leads : 0} type="currency" />
                  <MetricCard title="Custo por MQL" value={metrics.meteorico.mqls > 0 ? metrics.meteorico.investimento / metrics.meteorico.mqls : 0} type="currency" />
                  <MetricCard title="Pace Diário (MQLs)" value={metrics.meteorico.mqls / dias} type="number" decimals={2} />
+                 <MetricCard title="Frequência" value={metrics.meteorico.frequencia} type="number" decimals={2} />
                </div>
                
                <div className="space-y-6">
                  <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
-                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 1: Número de leads diário</h3>
+                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 1: Custo por MQL e Custo por Lead Diário</h3>
                    <div className="h-64">
                      <ResponsiveContainer width="100%" height="100%">
                        <ComposedChart data={metrics.meteorico.chartData}>
                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                          <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
-                         <YAxis stroke="#a1a1aa" fontSize={12} />
-                         <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46' }} formatter={tooltipFormatter} />
-                         <Line type="monotone" dataKey="leads" stroke="#eab308" strokeWidth={2} dot={false} />
+                         <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                         <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
+                         <Legend />
+                         <Line type="monotone" name="Custo por MQL" dataKey={(d) => d.mqls > 0 ? Number((d.investimento / d.mqls).toFixed(2)) : 0} stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} />
+                         <Line type="monotone" name="Custo por Lead" dataKey={(d) => d.leads > 0 ? Number((d.investimento / d.leads).toFixed(2)) : 0} stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
                        </ComposedChart>
                      </ResponsiveContainer>
                    </div>
                  </div>
 
                  <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
-                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 2: Investimento</h3>
+                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 2: Leads e MQLs Diários</h3>
                    <div className="h-64">
                      <ResponsiveContainer width="100%" height="100%">
                        <ComposedChart data={metrics.meteorico.chartData}>
                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                          <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
-                         <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-                         <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46' }} formatter={tooltipFormatter} />
+                         <YAxis stroke="#a1a1aa" fontSize={12} />
+                         <Tooltip
+                           contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }}
+                           formatter={(value, name) => {
+                             return [Number(value).toLocaleString("pt-BR"), name];
+                           }}
+                         />
+                         <Legend />
+                         <Line type="monotone" name="Leads" dataKey="leads" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} />
+                         <Line type="monotone" name="MQLs" dataKey="mqls" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} />
+                       </ComposedChart>
+                     </ResponsiveContainer>
+                   </div>
+                 </div>
+
+                 <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
+                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 3: Investimento</h3>
+                   <div className="h-64">
+                     <ResponsiveContainer width="100%" height="100%">
+                       <ComposedChart data={metrics.meteorico.chartData}>
+                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                         <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
+                         <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                         <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
                          <Bar dataKey="investimento" fill="#eab308" />
                        </ComposedChart>
                      </ResponsiveContainer>
@@ -826,14 +1009,14 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
                  </div>
 
                  <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
-                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 3: CTR (%) e Gráfico 4: Connect Rate (%)</h3>
+                   <h3 className="text-sm font-bold text-zinc-400 mb-4 uppercase">Gráfico 4: CTR (%) e Connect Rate (%)</h3>
                    <div className="h-64">
                      <ResponsiveContainer width="100%" height="100%">
                        <ComposedChart data={metrics.meteorico.chartData}>
                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                          <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
                          <YAxis yAxisId="left" stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `${v}%`} />
-                         <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46' }} formatter={tooltipFormatter} />
+                         <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
                          <Legend />
                          <Line yAxisId="left" type="monotone" name="CTR (%)" dataKey={(d) => d.impressoes > 0 ? ((d.cliques / d.impressoes) * 100).toFixed(2) : 0} stroke="#3b82f6" strokeWidth={2} dot={false} />
                          <Line yAxisId="left" type="monotone" name="Connect Rate (%)" dataKey={(d) => d.cliques > 0 ? Number(((d.pvs / d.cliques) * 100).toFixed(2)) : 0} stroke="#10b981" strokeWidth={2} dot={false} />
@@ -850,14 +1033,105 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                          <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
                          <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `${v}%`} />
-                         <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46' }} formatter={tooltipFormatter} />
+                         <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
                          <Line type="monotone" name="Conversão da Página (%)" dataKey={(d) => d.pvs > 0 ? Number(((d.leads / d.pvs) * 100).toFixed(2)) : 0} stroke="#8b5cf6" strokeWidth={2} dot={false} />
                        </ComposedChart>
                      </ResponsiveContainer>
                    </div>
                  </div>
+
+                 {metrics.meteorico.sendflow?.hasData && (
+                   <>
+                     <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
+                       <div className="flex items-center justify-between mb-4">
+                         <h3 className="text-sm font-bold text-zinc-400 uppercase">
+                           Gráfico 6: Pessoas no Grupo Diário (Sendflow WhatsApp)
+                         </h3>
+                         <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-medium">
+                           Total: {metrics.meteorico.sendflow.totalPessoas.toLocaleString('pt-BR')} pessoas
+                         </span>
+                       </div>
+                       <div className="h-64">
+                         <ResponsiveContainer width="100%" height="100%">
+                           <ComposedChart data={metrics.meteorico.chartData}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                             <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
+                             <YAxis stroke="#a1a1aa" fontSize={12} />
+                             <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
+                             <Legend />
+                             <Bar dataKey="pessoasNoGrupo" name="Pessoas no Grupo" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={45} />
+                           </ComposedChart>
+                         </ResponsiveContainer>
+                       </div>
+                     </div>
+
+                     <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
+                       <div className="flex items-center justify-between mb-4">
+                         <h3 className="text-sm font-bold text-zinc-400 uppercase">
+                           Gráfico 7: Custo por Pessoa no Grupo Diário (Sendflow)
+                         </h3>
+                         <span className="text-xs text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-full border border-cyan-500/20 font-medium">
+                           Média: R$ {metrics.meteorico.sendflow.custoPorPessoa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / pessoa
+                         </span>
+                       </div>
+                       <div className="h-64">
+                         <ResponsiveContainer width="100%" height="100%">
+                           <ComposedChart data={metrics.meteorico.chartData}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                             <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
+                             <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                             <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
+                             <Legend />
+                             <Line
+                               type="monotone"
+                               name="Custo por Pessoa no Grupo"
+                               dataKey={(d) => d.pessoasNoGrupo > 0 ? Number((d.custoPorPessoaNoGrupo || 0).toFixed(2)) : 0}
+                               stroke="#06b6d4"
+                               strokeWidth={2}
+                               dot={{ r: 3 }}
+                             />
+                           </ComposedChart>
+                         </ResponsiveContainer>
+                       </div>
+                     </div>
+
+                     <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">
+                       <div className="flex items-center justify-between mb-4">
+                         <h3 className="text-sm font-bold text-zinc-400 uppercase">
+                           Gráfico 8: Taxa de Entrada nos Grupos Diária (%) (Sendflow)
+                         </h3>
+                         <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2.5 py-1 rounded-full border border-yellow-500/20 font-medium">
+                           Taxa Geral: {metrics.meteorico.sendflow.taxaEntrada.toFixed(2)}%
+                         </span>
+                       </div>
+                       <div className="h-64">
+                         <ResponsiveContainer width="100%" height="100%">
+                           <ComposedChart data={metrics.meteorico.chartData}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                             <XAxis dataKey="date" stroke="#a1a1aa" fontSize={12} />
+                             <YAxis stroke="#a1a1aa" fontSize={12} tickFormatter={(v) => `${v}%`} />
+                             <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }} formatter={tooltipFormatter} />
+                             <Legend />
+                             <Line
+                               type="monotone"
+                               name="Taxa de Entrada nos Grupos (%)"
+                               dataKey={(d) => Number((d.taxaEntrada || 0).toFixed(2))}
+                               stroke="#f59e0b"
+                               strokeWidth={2}
+                               dot={{ r: 3 }}
+                             />
+                           </ComposedChart>
+                         </ResponsiveContainer>
+                       </div>
+                     </div>
+                   </>
+                 )}
                </div>
              </section>
+          )}
+
+          {activeTab === 'meteorico-funil' && metrics && (
+            <MeteoricoFunilView pages={metrics.meteorico.funilPages} />
           )}
 
           {activeTab === 'geracao-demanda-analise' && metrics && (
@@ -1412,15 +1686,111 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
           )}
 
           {activeTab === 'meteorico-criativos' && metrics && (
-             <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-8 pb-20">
-               <div className="flex justify-between items-end mb-4">
-                 <h2 className="text-xl font-bold tracking-tight border-l-4 border-yellow-500 pl-3 uppercase">Meteórico - Criativos</h2>
-               </div>
-               <div className="pt-4">
-                 <CreativesTable key={`${dashboardId}-meteorico`} initialStatusFilter="todos" data={metrics.creativesMET} onViewPesquisa={setSelectedCreativePesquisa} audienceTemp={audienceTemp} setAudienceTemp={setAudienceTemp} />
-               </div>
-             </section>
-          )}
+              <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 pb-20">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                  <h2 className="text-xl font-bold tracking-tight border-l-4 border-yellow-500 pl-3 uppercase">Meteórico - Criativos</h2>
+
+                  {/* Filtro por Página de Captura */}
+                  {meteoricoPages.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap bg-zinc-900 p-1.5 rounded-xl border border-white/5">
+                      <span className="text-xs font-medium text-zinc-400 pl-2">Página de Captura:</span>
+                      <button
+                        onClick={() => setSelectedMeteoricoPage("all")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          selectedMeteoricoPage === "all"
+                            ? "bg-yellow-500 text-zinc-950 shadow-md"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        Todas as Páginas
+                      </button>
+                      {meteoricoPages.map(pg => (
+                        <button
+                          key={pg}
+                          onClick={() => setSelectedMeteoricoPage(pg)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            selectedMeteoricoPage === pg
+                              ? "bg-yellow-500 text-zinc-950 shadow-md"
+                              : "text-zinc-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          {pg}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="pt-2">
+                  <CreativesTable initialStatusFilter="todos" data={displayedMeteoricoCreatives} onViewPesquisa={setSelectedCreativePesquisa} audienceTemp={audienceTemp} setAudienceTemp={setAudienceTemp} />
+                </div>
+              </section>
+           )}
+
+           {activeTab === 'meteorico-publicos' && metrics && (
+              <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 pb-20">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight border-l-4 border-yellow-500 pl-3 uppercase">
+                      Meteórico - Públicos
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-1 pl-3">
+                      Cruzamento dos conjuntos de anúncios do tráfego com o utm_term das leads
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <MeteoricoPublicosTable
+                    data={metrics.meteorico.publicos || []}
+                    onViewPesquisa={setSelectedCreativePesquisa}
+                  />
+                </div>
+              </section>
+           )}
+
+           {activeTab === 'meteorico-pesquisa' && metrics && (
+              <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-20">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                  <h2 className="text-xl font-bold tracking-tight border-l-4 border-yellow-500 pl-3 uppercase">Meteórico - Pesquisa de Audiência</h2>
+
+                  {/* Filtro por Página de Captura PGX */}
+                  {meteoricoPages.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap bg-zinc-900 p-1.5 rounded-xl border border-white/5">
+                      <span className="text-xs font-medium text-zinc-400 pl-2">Página de Captura:</span>
+                      <button
+                        onClick={() => setSelectedMeteoricoPage("all")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          selectedMeteoricoPage === "all"
+                            ? "bg-yellow-500 text-zinc-950 shadow-md"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        Todas as Páginas
+                      </button>
+                      {meteoricoPages.map(pg => (
+                        <button
+                          key={pg}
+                          onClick={() => setSelectedMeteoricoPage(pg)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            selectedMeteoricoPage === pg
+                              ? "bg-yellow-500 text-zinc-950 shadow-md"
+                              : "text-zinc-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          {pg}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar relative">
+                  <PesquisaAudiencia
+                    data={displayedMeteoricoPesquisaLeads}
+                    creatives={displayedMeteoricoCreatives}
+                    isLoading={loading || isCalculating}
+                  />
+                </div>
+              </section>
+           )}
 
           {activeTab === 'venda-direta-criativos' && metrics && (
              <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-8 pb-20">

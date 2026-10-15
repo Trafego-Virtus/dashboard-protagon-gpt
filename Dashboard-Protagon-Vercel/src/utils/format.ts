@@ -44,3 +44,47 @@ export function parseDate(dateStr: string): Date | null {
   }
   return null;
 }
+
+export function isRendaAcima5k(raw: string | undefined | null): boolean {
+  if (!raw) return false;
+  const str = String(raw).trim().toLowerCase();
+  if (!str) return false;
+  if (str.includes('não possuo') || str.includes('nao possuo') || str.includes('sem renda')) return false;
+
+  // Brackets explicitly <= 5.000
+  if (str.includes('2.501') && str.includes('5.000')) return false;
+  if (str.includes('1.501') && str.includes('2.500')) return false;
+  if (str.includes('até') || str.includes('ate')) {
+    if (str.includes('1.500') || str.includes('2.500') || str.includes('5.000')) return false;
+  }
+
+  // Brackets explicitly > 5.000
+  if (
+    str.includes('5.001') ||
+    str.includes('7.501') ||
+    str.includes('10.001') ||
+    str.includes('20.001') ||
+    str.includes('30.001') ||
+    str.includes('40.001') ||
+    str.includes('50.001')
+  ) {
+    return true;
+  }
+
+  if (str.includes('acima')) {
+    if (str.includes('1.500') || str.includes('2.500')) return false;
+    return true;
+  }
+
+  // Numerical fallback parsing
+  const nums = str.match(/\d[\d\.]*/g) || [];
+  const parsedNums = nums.map(n => parseFloat(n.replace(/\./g, ''))).filter(n => !isNaN(n));
+  if (parsedNums.length > 0) {
+    const min = parsedNums[0];
+    const max = parsedNums[parsedNums.length - 1];
+    if (min > 5000) return true;
+    if (max <= 5000) return false;
+  }
+
+  return false;
+}

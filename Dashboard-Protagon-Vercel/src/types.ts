@@ -57,6 +57,9 @@ export interface CreativeDataRow {
   cliques: number;
   impressoes: number;
   alcance: number;
+  pageViews?: number;
+  conversaoPagina?: number;
+  frequencia?: number;
   view3s: number;
   view25: number;
   view50?: number;

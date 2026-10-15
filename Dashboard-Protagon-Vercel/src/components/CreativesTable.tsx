@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, ArrowUpDown, FileSearch, CheckSquare, Copy, Check } from 'lucide-react';
+import { ExternalLink, ArrowUpDown, FileSearch, CheckSquare, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { formatCurrency, formatNumber } from '../utils/format';
 import { CreativeDataRow, MqlRule } from '../types';
 
@@ -36,12 +36,19 @@ interface CreativesTableProps {
 
 export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPesquisa, showDistribuicaoMetrics, audienceTemp, setAudienceTemp }: CreativesTableProps) {
   const [mqlRule, setMqlRule] = useState<MqlRule>('padrao');
-  const [sortField, setSortField] = useState<keyof CreativeDataRow | 'ctr' | 'frequencia' | 'hookRate' | 'hookRateMarcos' | 'cpl' | 'cpmql' | 'qualificacao' | 'cpvp' | 'cac_ingresso'>('investimento');
+  const [sortField, setSortField] = useState<keyof CreativeDataRow | 'ctr' | 'frequencia' | 'hookRate' | 'conversaoPagina' | 'hookRateMarcos' | 'cpl' | 'cpmql' | 'qualificacao' | 'cpvp' | 'cac_ingresso'>('investimento');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedCreatives, setSelectedCreatives] = useState<Set<string>>(new Set());
   const [filterOnlySelected, setFilterOnlySelected] = useState(false);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [copiedName, setCopiedName] = useState<string | null>(null);
+
+  const getConversaoPagina = (row: CreativeDataRow) => {
+    if (row.conversaoPagina !== undefined && row.conversaoPagina > 0) return row.conversaoPagina;
+    if (row.pageViews && row.pageViews > 0) return (row.leads / row.pageViews) * 100;
+    if (row.cliques > 0) return (row.leads / row.cliques) * 100;
+    return 0;
+  };
 
   const handleCopyName = (nome: string) => {
     navigator.clipboard.writeText(nome);
@@ -51,7 +58,7 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
     }, 2000);
   };
 
-  const handleSort = (field: keyof CreativeDataRow | 'ctr' | 'frequencia' | 'hookRate' | 'hookRateMarcos' | 'cpl' | 'cpmql' | 'qualificacao' | 'cpvp' | 'cac_ingresso') => {
+  const handleSort = (field: keyof CreativeDataRow | 'ctr' | 'frequencia' | 'hookRate' | 'conversaoPagina' | 'hookRateMarcos' | 'cpl' | 'cpmql' | 'qualificacao' | 'cpvp' | 'cac_ingresso') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -96,6 +103,9 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
     } else if (sortField === 'hookRate') {
       aVal = a.impressoes > 0 ? (a.view3s / a.impressoes) : 0;
       bVal = b.impressoes > 0 ? (b.view3s / b.impressoes) : 0;
+    } else if (sortField === 'conversaoPagina') {
+      aVal = getConversaoPagina(a);
+      bVal = getConversaoPagina(b);
     } else if (sortField === 'hookRateMarcos') {
       aVal = a.view25 > 0 ? (a.view3s / a.view25) : 0;
       bVal = b.view25 > 0 ? (b.view3s / b.view25) : 0;
@@ -165,6 +175,61 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
     return `rgba(${r}, ${g}, ${b}, 0.3)`;
   };
 
+  const validConversoes = sortedData
+    .filter(d => (d.investimento > 0 || d.impressoes > 0 || d.cliques > 0 || (d.pageViews && d.pageViews > 0)))
+    .map(d => getConversaoPagina(d))
+    .sort((a, b) => a - b);
+
+  const getConversaoBgColor = (row: CreativeDataRow) => {
+    if (row.investimento === 0 && row.impressoes === 0 && row.cliques === 0 && (!row.pageViews || row.pageViews === 0)) {
+      return 'transparent';
+    }
+
+    const convList = validConversoes.length > 0
+      ? validConversoes
+      : sortedData.map(d => getConversaoPagina(d)).sort((a, b) => a - b);
+
+    if (convList.length === 0) return 'transparent';
+
+    const conv = getConversaoPagina(row);
+    const minVal = convList[0];
+    const maxVal = convList[convList.length - 1];
+
+    if (maxVal === 0 && minVal === 0) {
+      // If all conversions are 0, show soft red
+      return 'rgba(239, 68, 68, 0.25)';
+    }
+
+    // Rank ratio based on index
+    const firstIdx = convList.findIndex(v => v >= conv);
+    const lastIdx = convList.lastIndexOf(conv);
+    const avgIdx = firstIdx === -1 ? convList.length - 1 : (firstIdx + lastIdx) / 2;
+    const rankRatio = convList.length > 1 ? avgIdx / (convList.length - 1) : 0.5;
+
+    // Linear value ratio
+    const valRatio = maxVal > minVal ? (conv - minVal) / (maxVal - minVal) : 0.5;
+
+    // Blend: higher ratio means better conversion (more green)
+    const ratio = Math.max(0, Math.min(1, 0.5 * rankRatio + 0.5 * valRatio));
+
+    // When ratio is high (maior): mais verde (16, 185, 129)
+    // When ratio is low (menor): mais vermelho (239, 68, 68)
+    // Midpoint: amarelo (234, 179, 8)
+    let r, g, b;
+    if (ratio < 0.5) {
+      const t = ratio * 2;
+      r = Math.round(239 + t * (234 - 239));
+      g = Math.round(68 + t * (179 - 68));
+      b = Math.round(68 + t * (8 - 68));
+    } else {
+      const t = (ratio - 0.5) * 2;
+      r = Math.round(234 + t * (16 - 234));
+      g = Math.round(179 + t * (185 - 179));
+      b = Math.round(8 + t * (129 - 8));
+    }
+    return `rgba(${r}, ${g}, ${b}, 0.3)`;
+  };
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedCreatives(new Set(sortedData.map(d => d.nome)));
@@ -183,6 +248,7 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
     alcance: selectedData.reduce((acc, curr) => acc + curr.alcance, 0),
     view3s: selectedData.reduce((acc, curr) => acc + curr.view3s, 0),
     view25: selectedData.reduce((acc, curr) => acc + curr.view25, 0),
+    pageViews: selectedData.reduce((acc, curr) => acc + (curr.pageViews || 0), 0),
     visitasPerfil: selectedData.reduce((acc, curr) => acc + curr.visitasPerfil, 0),
     leads: selectedData.reduce((acc, curr) => acc + curr.leads, 0),
     ingressos: selectedData.reduce((acc, curr) => acc + curr.ingressos, 0),
@@ -259,8 +325,12 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
               <p className="font-bold text-white text-sm">{summary.impressoes > 0 ? ((summary.view3s / summary.impressoes) * 100).toFixed(2) : '0.00'}%</p>
             </div>
             <div>
-              <p className="text-xs text-zinc-500 mb-1">Hook Rate Marcos</p>
-              <p className="font-bold text-white text-sm">{summary.view25 > 0 ? (summary.view3s / summary.view25).toFixed(2) : '0.00'}%</p>
+              <p className="text-xs text-zinc-500 mb-1">Conv. Página</p>
+              <p className="font-bold text-white text-sm">
+                {summary.pageViews > 0
+                  ? `${((summary.leads / summary.pageViews) * 100).toFixed(2)}%`
+                  : (summary.cliques > 0 ? `${((summary.leads / summary.cliques) * 100).toFixed(2)}%` : '0.00%')}
+              </p>
             </div>
             {showDistribuicaoMetrics && (
               <>
@@ -354,8 +424,8 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
               <th className="p-4 font-medium cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('hookRate')}>
                 Hook Rate <SortIcon field="hookRate" />
               </th>
-              <th className="p-4 font-medium cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('hookRateMarcos')}>
-                Hook Rate Marcos <SortIcon field="hookRateMarcos" />
+              <th className="p-4 font-medium cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('conversaoPagina')}>
+                Conv. Página (%) <SortIcon field="conversaoPagina" />
               </th>
               {showDistribuicaoMetrics && (
                 <>
@@ -406,11 +476,20 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
                 </td>
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded bg-zinc-800 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded bg-zinc-800 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center relative group">
                       {row.thumbnail ? (
-                        <img src={row.thumbnail} alt={row.nome} className="w-full h-full object-cover" />
+                        row.link ? (
+                          <a href={row.link} target="_blank" rel="noopener noreferrer" title="Clique para abrir anúncio" className="w-full h-full block">
+                            <img src={row.thumbnail} alt={row.nome} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200" />
+                          </a>
+                        ) : (
+                          <img src={row.thumbnail} alt={row.nome} className="w-full h-full object-cover" />
+                        )
                       ) : (
-                        <span className="text-zinc-600 text-xs">Sem img</span>
+                        <div className="flex flex-col items-center justify-center text-zinc-600">
+                          <ImageIcon className="w-4 h-4 opacity-40 mb-0.5" />
+                          <span className="text-[9px]">Sem img</span>
+                        </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -425,19 +504,30 @@ export function CreativesTable({ data, initialStatusFilter = 'ativos', onViewPes
                           {copiedName === row.nome ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                         </button>
                       </div>
-                      {row.link && (
-                        <a href={row.link} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-xs flex items-center gap-1 mt-1 transition-colors">
-                          Ver anúncio <ExternalLink className="w-3 h-3" />
+                      {row.link ? (
+                        <a
+                          href={row.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 rounded-md transition-all shadow-sm w-fit mt-1.5"
+                          title="Acessar link do criativo"
+                        >
+                          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                          <span>Ver anúncio</span>
                         </a>
+                      ) : (
+                        <span className="text-[11px] text-zinc-500 flex items-center gap-1 mt-1 font-medium opacity-75">
+                          Sem link
+                        </span>
                       )}
                     </div>
                   </div>
                 </td>
                 <td className="p-4 text-zinc-300">{formatCurrency(row.investimento)}</td>
-                <td className="p-4 text-zinc-300">{row.alcance > 0 ? (row.impressoes / row.alcance).toFixed(2) : '0.00'}</td>
+                <td className="p-4 text-zinc-300">{row.frequencia ? row.frequencia.toFixed(2) : (row.alcance > 0 ? (row.impressoes / row.alcance).toFixed(2) : '0.00')}</td>
                 <td className="p-4 text-zinc-300">{row.impressoes > 0 ? ((row.cliques / row.impressoes) * 100).toFixed(2) : '0.00'}%</td>
                 <td className="p-4 text-zinc-300">{row.impressoes > 0 ? ((row.view3s / row.impressoes) * 100).toFixed(2) : '0.00'}%</td>
-                <td className="p-4 text-zinc-300">{row.view25 > 0 ? (row.view3s / row.view25).toFixed(2) : '0.00'}%</td>
+                <td className="p-4 text-zinc-200 font-mono font-medium" style={{ backgroundColor: getConversaoBgColor(row) }}>{getConversaoPagina(row).toFixed(2)}%</td>
                 {showDistribuicaoMetrics && (
                   <>
                     <td className="p-4 text-zinc-300">{formatNumber(row.visitasPerfil)}</td>
