@@ -41,9 +41,9 @@ O fluxo é: Google Sheets publicado → `/api/csv` → leitura dos cabeçalhos e
 normalização → filtros de período → cálculos → componentes do dashboard.
 O Firebase continua atendendo às configurações e aos testes do aplicativo.
 
-## Webinário — PRO-WEB
+## Teto Invisível - Webinário — PRO-WEB
 
-A tela **Funis Perpétuos → Webinário** usa a
+A tela **Funis Perpétuos → Teto Invisível - Webinário** usa a
 [PRO-WEB publicada](https://docs.google.com/spreadsheets/d/e/2PACX-1vQjF-PCNOqWQZe3Ufy8xE0nhWslTONvTtDlK3DPjQVzeXRqxgrjQkEQst5N-tb7yxCQ0Xq1ieeOHhTn/pubhtml),
 sem agregar os leads ou anúncios das planilhas das praças.
 
@@ -66,7 +66,7 @@ sem agregar os leads ou anúncios das planilhas das praças.
 - A PRO-WEB não publica ingressos. As vendas continuam vindo apenas das abas de
   ingressos de Joinville, Cuiabá e Porto Alegre, filtradas pela atribuição Webinário.
   A regra existente de São Paulo/Goiânia permanece. Nenhuma GERAL das praças é
-  consultada pela tela de Webinário.
+  consultada pela tela de Teto Invisível - Webinário.
 - Falhas de leitura exibem uma mensagem e opção de tentar novamente.
   O botão de atualização consulta os dados publicados sem cache local.
 

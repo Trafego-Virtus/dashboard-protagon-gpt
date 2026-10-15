@@ -160,7 +160,7 @@ export function PerpetualWebinario({ onOpenAppMenu }: { onOpenAppMenu: () => voi
                 <Menu size={20} />
               </button>
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">Funil de Webinário</h1>
+                <h1 className="text-xl font-bold text-white tracking-tight">Teto Invisível - Webinário</h1>
                 <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Análise Perpétua</p>
               </div>
             </div>

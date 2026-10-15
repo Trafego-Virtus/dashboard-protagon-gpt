@@ -3,10 +3,6 @@
   "original_archive_sha256": "bd5f2a2addf9c4b86cc418b75459336ac6bd2c8c7060167c8b16868f13a8bdf3",
   "preserved_application_files": [
     {
-      "path": "src/App.tsx",
-      "sha256": "f6ab354fd0ac6e153dcd61a48550ab9eb2e3b52b3e091ba77ca4d8835ae5fce0"
-    },
-    {
       "path": "src/components/AnaliseKPIs.tsx",
       "sha256": "022b5b878ec907f0c0d56f41b72106d863ecdbbcc07b0bde6e66f902f99819e2"
     },
@@ -244,7 +240,7 @@
     {
       "path": "src/components/PerpetualWebinario.tsx",
       "original_sha256": "d86b98644d15badb18784beacdc9cad522afa4027fd49da6c50c9da7ae3d0cc4",
-      "current_sha256": "c100a162b36ce5d33e43968416aafc6978d3c9aa4bcd0a6d030162025ea5485a"
+      "current_sha256": "2aaed4a7deabff2044741411ec64a044ca4ac2cac40fb04008e55587ddfffcf6"
     },
     {
       "path": "src/utils/webinarioCalculator.ts",
@@ -255,6 +251,11 @@
       "path": "src/utils/webinarioData.ts",
       "original_sha256": "24557ff62374ad45fcc7e5fa36b52fdb3f6e1825ac02fc14f14be40065ad1510",
       "current_sha256": "3a5de7f7d6e53add9515f4438212075917fb4a2b7f8ee8c288e0454638142ee1"
+    },
+    {
+      "path": "src/App.tsx",
+      "original_sha256": "f6ab354fd0ac6e153dcd61a48550ab9eb2e3b52b3e091ba77ca4d8835ae5fce0",
+      "current_sha256": "c888b39592a7d4ec1016006418bf84f2741d9851b6771124b8219a3f3a72471e"
     }
   ],
   "added_application_files": [
@@ -275,7 +276,8 @@
     "Runtime aligned with the new supplied archive; Vercel infrastructure and Firebase configuration preserved.",
     "GERAL is the sole lead source for the four updated cities; source IDs verified against Google Sheets and public CSV on 2026-10-15.",
     "Existing contact reconciliation, failure handling, refresh and creative status behavior retained.",
-    "Webinar leads, advertising and quiz now read from dedicated PRO-WEB; id_pessoa supported and city attribution recovered from tracking when blank. Existing city ticket sources retained. Verified on 2026-10-15."
+    "Webinar leads, advertising and quiz now read from dedicated PRO-WEB; id_pessoa supported and city attribution recovered from tracking when blank. Existing city ticket sources retained. Verified on 2026-10-15.",
+    "Workshop view removed from navigation and routing; webinar menu and page heading renamed to Teto Invisível - Webinário."
   ],
   "target": "GitHub + Vercel, Node.js 22, Vite frontend and api/csv.ts function"
 }

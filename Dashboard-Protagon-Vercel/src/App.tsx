@@ -6,13 +6,12 @@ import { ReportGenerator } from './components/ReportGenerator';
 import { FeedbacksKPIsView } from './components/FeedbacksKPIs/FeedbacksKPIsView';
 import { PerpetualQuiz } from './components/PerpetualQuiz';
 import { PerpetualWebinario } from './components/PerpetualWebinario';
-import { PerpetualWorkshop } from './components/PerpetualWorkshop';
 import { PerpetualGuardians } from './components/PerpetualGuardians';
 import { TestesAgilView } from './components/TestesAgil/TestesAgilView';
 import { Filter } from 'lucide-react';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'feedbacks-kpis' | 'testes' | 'quiz' | 'webinario' | 'workshop' | 'guardians' | DashboardId>('protagon-joinville');
+  const [currentView, setCurrentView] = useState<'feedbacks-kpis' | 'testes' | 'quiz' | 'webinario' | 'guardians' | DashboardId>('protagon-joinville');
   const [previousDashboard, setPreviousDashboard] = useState<DashboardId>('protagon-joinville');
   const [isAppMenuOpen, setIsAppMenuOpen] = useState(false);
 
@@ -57,9 +56,6 @@ export default function App() {
         case 'webinario':
           setCurrentView('webinario');
           break;
-        case 'workshop':
-          setCurrentView('workshop');
-          break;
         case 'guardians':
           setCurrentView('guardians');
           break;
@@ -95,11 +91,6 @@ export default function App() {
   };
   const handleWebinarioOpen = () => {
     setCurrentView('webinario');
-    setIsAppMenuOpen(false);
-  };
-
-  const handleWorkshopOpen = () => {
-    setCurrentView('workshop');
     setIsAppMenuOpen(false);
   };
 
@@ -204,22 +195,10 @@ export default function App() {
                 : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200 border border-transparent'
             }`}
           >
-            <Filter size={18} className={currentView === 'webinario' ? 'text-yellow-500' : 'text-zinc-500'} />
-            Webinário
+            <Filter size={18} className={`shrink-0 ${currentView === 'webinario' ? 'text-yellow-500' : 'text-zinc-500'}`} />
+            <span className="text-left leading-snug">Teto Invisível - Webinário</span>
           </button>
 
-          <button
-            onClick={handleWorkshopOpen}
-            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
-              currentView === 'workshop' 
-                ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]' 
-                : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200 border border-transparent'
-            }`}
-          >
-            <Filter size={18} className={currentView === 'workshop' ? 'text-yellow-500' : 'text-zinc-500'} />
-            Workshop
-          </button>
-          
           <button
             onClick={handleGuardiansOpen}
             className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
@@ -248,8 +227,6 @@ export default function App() {
           <PerpetualQuiz onOpenAppMenu={() => setIsAppMenuOpen(true)} />
         ) : currentView === 'webinario' ? (
           <PerpetualWebinario onOpenAppMenu={() => setIsAppMenuOpen(true)} />
-        ) : currentView === 'workshop' ? (
-          <PerpetualWorkshop onOpenAppMenu={() => setIsAppMenuOpen(true)} />
         ) : currentView === 'guardians' ? (
           <PerpetualGuardians onOpenAppMenu={() => setIsAppMenuOpen(true)} />
         ) : (
