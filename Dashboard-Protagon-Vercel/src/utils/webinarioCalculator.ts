@@ -1,5 +1,5 @@
 import { parse, isAfter, isBefore, startOfDay, endOfDay, format } from 'date-fns';
-import { WebinarioRawData } from './webinarioData';
+import type { WebinarioRawData } from './webinarioData';
 import { parseDate, parseNumber } from './format';
 
 export interface WebinarioMetrics {
@@ -87,7 +87,7 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
            lower.includes('acima de r$50.000');
   };
 
-  const fGeral = (() => {
+  let fGeral = (() => {
     // 1. Count cells helper
     const countCells = (row: any) => {
       
@@ -101,12 +101,15 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
       return c;
     };
 
-    // 2. Filter by date, must have UUID, deduplicate by UUID picking most cells
+    // PRO-WEB uses id_pessoa; legacy UUID and contact-only records are also valid.
     const uuidMap = new Map<string, any>();
-    for (const r of rawData.geral) {
+    for (const [index, input] of rawData.geral.entries()) {
+      const r = {
+        ...input,
+        email: String(input.email || input['E-mail'] || input.Email || '').trim().toLowerCase(),
+      };
       if (!isWithinDateRange(r['data_hora'] || '')) continue;
-      const uuid = (r['uuid']?.trim() || r['uidd']?.trim() || '').toLowerCase();
-      if (!uuid) continue;
+      const uuid = String(r.id_pessoa || r.uuid || r.uidd || `row:${index}`).trim().toLowerCase();
       
       if (!uuidMap.has(uuid)) {
         uuidMap.set(uuid, r);
@@ -120,7 +123,7 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
     
     // 3. Get phone helper
     const getPhone = (row: any) => {
-      const raw = String(row['Telefone'] || row['telefone'] || row['Celular'] || row['celular'] || row['WhatsApp'] || row['whatsapp'] || '');
+      const raw = String(row['numero'] || row['Telefone'] || row['telefone'] || row['Celular'] || row['celular'] || row['WhatsApp'] || row['whatsapp'] || '');
       return raw.replace(/\D/g, '');
     };
 
@@ -160,34 +163,60 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
   })();
   const fMeta = rawData.captura.filter(r => isWithinDateRange(r['Data']));
 
-      const basePracas = ['Joinville', 'Cuiabá', 'Porto Alegre', 'São Paulo', 'Goiânia', 'Orgânico', 'Geral', 'Quiz'];
+  const basePracas = ['Joinville', 'Cuiabá', 'Porto Alegre', 'São Paulo', 'Goiânia', 'Orgânico', 'Geral', 'Quiz'];
   const pracasSet = new Set<string>(basePracas);
-  const campaignToAtrib = new Map<string, string>();
-  
+  const normalizedText = (raw: unknown) => String(raw || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
   const normalizeAtr = (raw: string) => {
-    const upper = String(raw || '').trim().toUpperCase();
-    if (upper === 'JOINVILLE') return 'Joinville';
-    if (upper === 'CUIABÁ' || upper === 'CUIABA') return 'Cuiabá';
-    if (upper === 'PORTO ALEGRE') return 'Porto Alegre';
-    if (upper === 'SÃO PAULO' || upper === 'SAO PAULO' || upper === 'SP') return 'São Paulo';
-    if (upper === 'GOIÂNIA' || upper === 'GOIANIA' || upper === 'GO') return 'Goiânia';
-    if (upper === 'GERAL') return 'Geral';
-    if (upper === 'ORGÂNICO' || upper === 'ORGANICO') return 'Orgânico';
-    if (upper === 'VEIO DIRETAMENTE DO QUIZ') return 'Quiz';
-    if (upper === '') return '';
-    return String(raw || '').trim();
+    const upper = normalizedText(raw);
+    const names: Record<string, string> = {
+      JOINVILLE: 'Joinville', CUIABA: 'Cuiabá', 'PORTO ALEGRE': 'Porto Alegre',
+      'PORT ALEGRE': 'Porto Alegre', POA: 'Porto Alegre', 'SAO PAULO': 'São Paulo', SP: 'São Paulo',
+      GOIANIA: 'Goiânia', GO: 'Goiânia', GOIAS: 'Goiás', PARANA: 'Paraná',
+      GERAL: 'Geral', ORGANICO: 'Orgânico', 'VEIO DIRETAMENTE DO QUIZ': 'Quiz', QUIZ: 'Quiz',
+    };
+    return names[upper] || String(raw || '').trim();
   };
 
-  fMeta.forEach(r => {
+  // A campaign may target several cities: never assign its last ad row's city
+  // to all its leads. Prefer the lead's own campaign/ad-set tracking in that case.
+  const campaignToAtrib = new Map<string, Set<string>>();
+  rawData.captura.forEach(r => {
+    const campaign = normalizedText(r['NOME DA CAMPANHA']);
     const atr = normalizeAtr(r['Atribuição']);
-    const campaign = String(r['NOME DA CAMPANHA'] || '').trim();
-    if (atr) {
-      pracasSet.add(atr);
-    }
     if (campaign && atr) {
-      campaignToAtrib.set(campaign, atr);
+      if (!campaignToAtrib.has(campaign)) campaignToAtrib.set(campaign, new Set());
+      campaignToAtrib.get(campaign)!.add(atr);
     }
   });
+  const inferPraca = (r: any) => {
+    const explicit = String(r.praca || r['Atribuição'] || '').trim();
+    if (explicit && !/^webin[aá]rio$/i.test(explicit)) return normalizeAtr(explicit);
+    const tracking = normalizedText(`${r.utm_campaign || ''} ${r.utm_term || ''}`);
+    const cityPatterns: [RegExp, string][] = [
+      [/\bJOINVILLE\b/, 'Joinville'], [/\bCUIABA\b/, 'Cuiabá'],
+      [/\b(?:PORTO? ALEGRE|POA)\b/, 'Porto Alegre'], [/\b(?:SAO PAULO|SP)\b/, 'São Paulo'],
+      [/\bGOIANIA\b/, 'Goiânia'], [/\bGOIAS\b/, 'Goiás'], [/\bPARANA\b/, 'Paraná'],
+    ];
+    const cities = cityPatterns.filter(([pattern]) => pattern.test(tracking));
+    if (cities.length === 1) return cities[0][1];
+    const campaignCities = campaignToAtrib.get(normalizedText(r.utm_campaign));
+    if (campaignCities?.size === 1) return [...campaignCities][0];
+    if (/\bQUIZ\b/.test(tracking)) return 'Quiz';
+    return String(r.utm_campaign || '').trim() ? 'Geral' : 'Orgânico';
+  };
+  const quizEmails = new Set((rawData.quiz || [])
+    .map(r => String(r.email || r['E-mail'] || r.Email || '').trim().toLowerCase()).filter(Boolean));
+  fGeral = fGeral.map(r => ({
+    ...r,
+    'Atribuição': inferPraca(r),
+    'Inscrito no Quiz': quizEmails.has(r.email) ? 'Inscrito(a) no quiz' : r['Inscrito no Quiz'],
+  }));
+  fMeta.forEach(r => {
+    const atr = normalizeAtr(r['Atribuição']);
+    if (atr) pracasSet.add(atr);
+  });
+  fGeral.forEach(r => pracasSet.add(r['Atribuição']));
 
   const pracas = Array.from(pracasSet);
   
@@ -289,21 +318,13 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
     }
 
     const dateStr = getDay(r['data_hora']) || r['data_hora'].split(' ')[0];
-    if (!chartMap.has(dateStr)) chartMap.set(dateStr, { name: dateStr, investimentoTotal: 0, leadsTotal: 0, mqlsTotal: 0, cliquesTotal: 0, pageViewsTotal: 0 });
+    if (!chartMap.has(dateStr)) chartMap.set(dateStr, { name: dateStr, investimentoTotal: 0, leadsTotal: 0, mqlsTotal: 0, cliquesTotal: 0, pageViewsTotal: 0, vendasTotal: 0 });
     const cData = chartMap.get(dateStr);
     cData.leadsTotal += 1;
     cData.mqlsTotal += mql ? 1 : 0;
     cData[`leads_${praca}`] = (cData[`leads_${praca}`] || 0) + 1;
     cData[`mqls_${praca}`] = (cData[`mqls_${praca}`] || 0) + (mql ? 1 : 0);
   });
-
-  // Calculate chart CPL
-  for (const cData of chartMap.values()) {
-    ['Orgânico', ...pracas].forEach(p => {
-      cData[`cpl_${p}`] = cData[`leads_${p}`] > 0 ? (cData[`inv_${p}`] || 0) / cData[`leads_${p}`] : 0;
-    });
-    cData.cplTotal = cData.leadsTotal > 0 ? (cData.investimentoTotal || 0) / cData.leadsTotal : 0;
-  }
 
   // Calculate ratios
   Object.keys(metrics.pracas).forEach(k => {
@@ -330,29 +351,6 @@ export function calculateWebinarioMetrics(rawData: WebinarioRawData, startDateSt
   
   metrics.resumo.webinarioPercent = uniqueEmails.resumo.all.size > 0 ? (uniqueEmails.resumo.webinario.size / uniqueEmails.resumo.all.size) * 100 : 0;
   metrics.resumo.webinarioAbs = uniqueEmails.resumo.webinario.size;
-
-  metrics.chartData = Array.from(chartMap.values()).sort((a, b) => {
-    const getD = (ds) => {
-       if (ds.includes('/')) {
-         const p = ds.split('/');
-         return new Date(`20${p[2].length === 2 ? p[2] : p[2].slice(-2)}-${p[1]}-${p[0]}`).getTime();
-       }
-       return new Date(ds).getTime();
-    };
-    return getD(a.name) - getD(b.name);
-  }).map(d => {
-     if (d.name.includes('-')) {
-       const [y,m,day] = d.name.split('-');
-       d.name = `${day}/${m}`;
-     } else if (d.name.includes('/')) {
-       const p = d.name.split('/');
-       d.name = `${p[0]}/${p[1]}`;
-     }
-  
-     d.connectRate = d.cliquesTotal > 0 ? (d.pageViewsTotal / d.cliquesTotal) * 100 : 0;
-     d.pageConversion = d.pageViewsTotal > 0 ? (d.leadsTotal / d.pageViewsTotal) * 100 : 0;
-     return d;
-  });
 
   // Process Creatives
   const cMap = new Map<string, any>();
@@ -487,6 +485,37 @@ fMeta.forEach(r => {
       }
     });
   }
+
+  // Calculate chart CPL
+  for (const cData of chartMap.values()) {
+    ['Orgânico', ...pracas].forEach(p => {
+      cData[`cpl_${p}`] = cData[`leads_${p}`] > 0 ? (cData[`inv_${p}`] || 0) / cData[`leads_${p}`] : 0;
+    });
+    cData.cplTotal = cData.leadsTotal > 0 ? (cData.investimentoTotal || 0) / cData.leadsTotal : 0;
+  }
+
+  metrics.chartData = Array.from(chartMap.values()).sort((a, b) => {
+    const getD = (ds) => {
+       if (ds.includes('/')) {
+         const p = ds.split('/');
+         return new Date(`20${p[2].length === 2 ? p[2] : p[2].slice(-2)}-${p[1]}-${p[0]}`).getTime();
+       }
+       return new Date(ds).getTime();
+    };
+    return getD(a.name) - getD(b.name);
+  }).map(d => {
+     if (d.name.includes('-')) {
+       const [y,m,day] = d.name.split('-');
+       d.name = `${day}/${m}`;
+     } else if (d.name.includes('/')) {
+       const p = d.name.split('/');
+       d.name = `${p[0]}/${p[1]}`;
+     }
+
+     d.connectRate = d.cliquesTotal > 0 ? (d.pageViewsTotal / d.cliquesTotal) * 100 : 0;
+     d.pageConversion = d.pageViewsTotal > 0 ? (d.leadsTotal / d.pageViewsTotal) * 100 : 0;
+     return d;
+  });
 
   metrics.creatives = Array.from(cMap.values()).map(c => {
     c.cpl = c.leads > 0 ? c.investimento / c.leads : 0;

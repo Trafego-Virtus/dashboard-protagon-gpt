@@ -35,11 +35,40 @@ Os novos identificadores foram conferidos no Google Sheets e na publicação web
 - Conforme o ZIP, no Meteórico a qualificação considera renda acima de R$ 5.000
   ou `clint=SIM`; nos demais funis a regra existente de `clint=SIM` foi preservada.
 - A regra do ZIP que zera ingressos/cadeiras de São Paulo e Goiânia foi mantida.
-- As demais fontes do ZIP, incluindo Cuiabá e os funis perpétuos, foram mantidas.
+- As demais fontes das praças do ZIP, incluindo Cuiabá, foram mantidas.
 
 O fluxo é: Google Sheets publicado → `/api/csv` → leitura dos cabeçalhos e
 normalização → filtros de período → cálculos → componentes do dashboard.
 O Firebase continua atendendo às configurações e aos testes do aplicativo.
+
+## Webinário — PRO-WEB
+
+A tela **Funis Perpétuos → Webinário** usa a
+[PRO-WEB publicada](https://docs.google.com/spreadsheets/d/e/2PACX-1vQjF-PCNOqWQZe3Ufy8xE0nhWslTONvTtDlK3DPjQVzeXRqxgrjQkEQst5N-tb7yxCQ0Xq1ieeOHhTn/pubhtml),
+sem agregar os leads ou anúncios das planilhas das praças.
+
+| Dados | Aba PRO-WEB | gid verificado |
+| --- | --- | --- |
+| Leads e pesquisa de audiência | GERAL | 0 |
+| Investimento, criativos e páginas | MetaAds_Dados_Performance_webinario | 680936326 |
+| Cruzamento de inscritos no quiz | INSCRITOS QUIZ | 1711648297 |
+
+- `webinarioData.ts` descobre os IDs pelo nome das abas e usa os IDs conferidos
+  caso o índice publicado esteja indisponível. GERAL é selecionada por nome exato.
+- A nova GERAL usa `id_pessoa`; UUID não é obrigatório. A reconciliação por
+  e-mail/telefone foi mantida; registros excluídos (`deleted=1`) e testes são ignorados.
+- Como `praca` e `Atribuição` estão vazias na fonte atual, a praça é identificada
+  pela campanha/conjunto do lead ou por uma campanha de anúncios com praça única.
+  Campanhas ambíguas ficam em Geral; leads sem campanha ficam em Orgânico.
+  Uma atribuição explícita na planilha tem prioridade quando preenchida.
+- A regra existente de MQL por faixa de renda foi preservada. INSCRITOS QUIZ
+  apenas cruza e-mails com os leads da GERAL; não acrescenta leads ao total.
+- A PRO-WEB não publica ingressos. As vendas continuam vindo apenas das abas de
+  ingressos de Joinville, Cuiabá e Porto Alegre, filtradas pela atribuição Webinário.
+  A regra existente de São Paulo/Goiânia permanece. Nenhuma GERAL das praças é
+  consultada pela tela de Webinário.
+- Falhas de leitura exibem uma mensagem e opção de tentar novamente.
+  O botão de atualização consulta os dados publicados sem cache local.
 
 ## Publicar na Vercel
 

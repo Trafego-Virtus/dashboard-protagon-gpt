@@ -1,17 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, subDays, startOfToday } from 'date-fns';
-import { fetchRawDashboardData } from '../utils/dataFetching';
-import { DashboardId } from '../utils/api';
+import { fetchWebinarioData, type WebinarioRawData } from '../utils/webinarioData';
 import { calculateWebinarioMetrics, WebinarioMetrics } from '../utils/webinarioCalculator';
 
-const CITIES: DashboardId[] = ['protagon-joinville', 'protagon-cuiaba', 'protagon-porto-alegre', 'protagon-sao-paulo', 'protagon-goiania'];
-
-interface WebinarioRawData {
-  geral: any[];
-  captura: any[];
-  ingressos: any[];
-}
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { Copy, Check, ExternalLink, Menu, ArrowDown, ArrowUp, Info, X, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
@@ -24,6 +16,7 @@ export function PerpetualWebinario({ onOpenAppMenu }: { onOpenAppMenu: () => voi
   const [endDate, setEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
   const [datePreset, setDatePreset] = useState('last7');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState<'geral' | 'audiencia'>('geral');
   const [audienciaPraca, setAudienciaPraca] = useState<string>('todos');
@@ -46,20 +39,10 @@ export function PerpetualWebinario({ onOpenAppMenu }: { onOpenAppMenu: () => voi
   const handleRefresh = async () => {
     setLoading(true);
     try {
-      const cityPromises = CITIES.map(cid => fetchRawDashboardData(cid, true));
-      const results = await Promise.all(cityPromises);
-      
-      const mergedWebinarioTraffic = results.flatMap(r => r.webinario || []);
-      const mergedGeral = results.flatMap(r => r.geral || []);
-      const mergedIngressos = results.flatMap(r => r.ingressos || []);
-      
-      setRawData({
-        captura: mergedWebinarioTraffic,
-        geral: mergedGeral,
-        ingressos: mergedIngressos
-      });
+      setError(null);
+      setRawData(await fetchWebinarioData(true));
     } catch (e) {
-      console.error("Error loading webinario data:", e);
+      setError(e instanceof Error ? e.message : 'Não foi possível carregar os dados do webinário.');
     } finally {
       setLoading(false);
     }
@@ -110,6 +93,16 @@ export function PerpetualWebinario({ onOpenAppMenu }: { onOpenAppMenu: () => voi
     if (sortField !== field) return null;
     return sortDir === 'asc' ? <ArrowUp className="w-3 h-3 inline-block ml-1" /> : <ArrowDown className="w-3 h-3 inline-block ml-1" />;
   };
+
+  if (error && !loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-[#050505] h-full p-6 text-center">
+        <p role="alert" className="text-red-400">{error}</p>
+        <button onClick={handleRefresh} className="rounded-lg bg-yellow-500 px-4 py-2 font-medium text-black">Tentar novamente</button>
+        <button onClick={onOpenAppMenu} className="text-sm text-zinc-400">Abrir menu</button>
+      </div>
+    );
+  }
 
   if (loading || !metrics) {
     return <div className="flex-1 flex items-center justify-center bg-[#050505] h-full"><div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div></div>;
@@ -167,7 +160,7 @@ export function PerpetualWebinario({ onOpenAppMenu }: { onOpenAppMenu: () => voi
                 <Menu size={20} />
               </button>
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">Funil de Webnário</h1>
+                <h1 className="text-xl font-bold text-white tracking-tight">Funil de Webinário</h1>
                 <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Análise Perpétua</p>
               </div>
             </div>
