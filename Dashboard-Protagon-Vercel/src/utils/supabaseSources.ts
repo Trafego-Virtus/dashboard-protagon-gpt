@@ -9,6 +9,7 @@ export const SUPABASE_DATASETS = ['geral', 'met', 'vd', 'gd', 'dc', 'dcCorredor'
 export type SupabaseDataset = typeof SUPABASE_DATASETS[number];
 export type SupabaseCity = keyof typeof SUPABASE_CITIES;
 export const SUPABASE_PAGE_SIZE = 500;
+export const SUPABASE_LEAD_ID_WINDOW = 5000;
 
 export function hasSupabaseSource(city: string): city is SupabaseCity {
   return Object.hasOwn(SUPABASE_CITIES, city);

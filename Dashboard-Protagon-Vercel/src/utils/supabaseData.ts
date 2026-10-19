@@ -1,6 +1,6 @@
 import { normalizeLead } from './leadData';
 import type { DashboardId } from './dashboardSources';
-import { hasSupabaseSource, SUPABASE_DATASETS, type SupabaseDataset } from './supabaseSources';
+import { hasSupabaseSource, SUPABASE_DATASETS, SUPABASE_LEAD_ID_WINDOW, type SupabaseDataset } from './supabaseSources';
 
 type Row = Record<string, any>;
 let configCache: { promise: Promise<boolean>; expires: number } | undefined;
@@ -22,10 +22,35 @@ export async function usesSupabase(city: DashboardId, forceRefresh = false): Pro
 
 export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
   if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
+  if (dataset !== 'geral') return fetchPages(city, dataset);
+
+  const response = await fetch(`/api/supabase?${new URLSearchParams({ city, dataset, bounds: '1' })}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Não foi possível iniciar a leitura dos leads no Supabase. Tente novamente.');
+  const bounds = await response.json();
+  if (bounds.minId === null && bounds.maxId === null) return [];
+  const first = Number(bounds.minId), last = Number(bounds.maxId);
+  if (bounds.minId == null || bounds.maxId == null || !/^\d+$/.test(String(bounds.minId))
+    || !/^\d+$/.test(String(bounds.maxId)) || !Number.isSafeInteger(first) || !Number.isSafeInteger(last)
+    || first < 0 || last < first) throw new Error('O Supabase retornou um intervalo de leads inválido.');
+
+  const rows: Row[] = [];
+  // A fixed upper bound prevents new inserts from moving pages during this load.
+  // Empty ID intervals are normal (other products/cities); always continue.
+  for (let from = first; from <= last; from += SUPABASE_LEAD_ID_WINDOW * 2) {
+    const starts = [from, from + SUPABASE_LEAD_ID_WINDOW].filter(start => start <= last);
+    const chunks = await Promise.all(starts.map(start => fetchPages(city, dataset, {
+      from: String(start), to: String(Math.min(start + SUPABASE_LEAD_ID_WINDOW - 1, last)),
+    })));
+    for (const chunk of chunks) rows.push(...chunk);
+  }
+  return rows;
+}
+
+async function fetchPages(city: DashboardId, dataset: SupabaseDataset, range: Record<string, string> = {}): Promise<Row[]> {
   const rows: Row[] = [];
   let offset = 0;
   while (offset <= 1_000_000) {
-    const params = new URLSearchParams({ city, dataset, offset: String(offset) });
+    const params = new URLSearchParams({ city, dataset, offset: String(offset), ...range });
     const response = await fetch(`/api/supabase?${params}`, { cache: 'no-store' });
     if (!response.ok) throw new Error(`Não foi possível atualizar ${dataset} no Supabase. Tente novamente.`);
     const page = await response.json();

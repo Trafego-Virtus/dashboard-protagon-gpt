@@ -274,11 +274,11 @@
     },
     {
       "path": "src/utils/supabaseSources.ts",
-      "sha256": "c84d36aca978bf123e51790a3cd5665ff9bed9d8fc5200e1b962cf3c1af31c52"
+      "sha256": "f61a8e808cfa32b0a0574296416680dc7fbf092085f616d4b8cbe6752a909fcf"
     },
     {
       "path": "src/utils/supabaseData.ts",
-      "sha256": "2f360b847b3b2769bb67f8c57e5d115ee895dc0c94100f82d064f133e2643887"
+      "sha256": "e6f17b346d7870c44afbabe8629c0af5fa41a7eb6d5d2f782c35b46b6f5748f7"
     }
   ],
   "notes": [
@@ -287,7 +287,8 @@
     "Existing contact reconciliation, failure handling, refresh and creative status behavior retained.",
     "Webinar leads, advertising and quiz now read from dedicated PRO-WEB; id_pessoa supported and city attribution recovered from tracking when blank. Existing city ticket sources retained. Verified on 2026-10-15.",
     "Workshop view removed from navigation and routing; webinar menu and page heading renamed to Teto Invisível - Webinário.",
-    "Supabase integration added for the four city lead views and 24 advertising tables. Server-side secret configuration activates migration; Sheets remain available before activation. No direct raw dedup table access or database permission changes. Supplemental sources and PRO-WEB remain on Sheets. Schema and aggregate source checks performed on 2026-10-19; live REST end-to-end check requires the production server credential."
+    "Supabase integration added for the four city lead views and 24 advertising tables. Server-side secret configuration activates migration; Sheets remain available before activation. No direct raw dedup table access or database permission changes. Supplemental sources and PRO-WEB remain on Sheets. Schema and aggregate source checks performed on 2026-10-19; live REST end-to-end check requires the production server credential.",
+    "Lead REST timeout corrected with bounded ID intervals and a server-only bounds RPC over the authorized city views. Original views, base tables and existing RLS/grants unchanged. Applied on 2026-10-19."
   ],
   "target": "GitHub + Vercel, Node.js 22, Vite frontend, api/csv.ts and api/supabase.ts functions"
 }

@@ -50,6 +50,7 @@ test('secret is server-only and REST selects only authorized dashboard lead colu
     assert.equal(url.searchParams.get('limit'), '500');
     assert.equal(url.searchParams.get('order'), 'id.asc');
     assert.equal(url.searchParams.get('or'), '(deleted.is.null,deleted.eq.0)');
+    assert.equal(url.searchParams.get('and'), '(id.gte.10000,id.lte.14999)');
     assert.ok(!url.searchParams.get('select')!.split(',').includes('json'));
     assert.equal((init.headers as any).apikey, 'sb_secret_synthetic_test_only');
     assert.equal((init.headers as any)['Accept-Profile'], 'public');
@@ -59,11 +60,13 @@ test('secret is server-only and REST selects only authorized dashboard lead colu
   try {
     const config = await request();
     assert.deepEqual(config.data, { enabled: true });
-    const response = await request('?city=protagon-joinville&dataset=geral&offset=500');
+    const response = await request('?city=protagon-joinville&dataset=geral&offset=500&from=10000&to=14999');
     assert.equal(response.statusCode, 200);
     assert.equal(response.data.nextOffset, 501);
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.ok(!JSON.stringify(response.data).includes('sb_secret_'));
+    assert.equal((await request('?city=protagon-joinville&dataset=geral')).statusCode, 400);
+    assert.equal((await request('?city=protagon-joinville&dataset=geral&from=0&to=5000')).statusCode, 400);
   } finally { globalThis.fetch = original; }
 }));
 
@@ -86,7 +89,9 @@ test('pagination reads more than 1000 rows, including API caps below the request
   const inputRows = Array.from({ length: 1253 }, (_, id) => ({ id, email: `${id}@example.test` }));
   const offsets: number[] = [];
   globalThis.fetch = (async (input: any) => {
-    const offset = Number(new URL(String(input), 'https://example.test').searchParams.get('offset'));
+    const params = new URL(String(input), 'https://example.test').searchParams;
+    if (params.has('bounds')) return Response.json({ minId: '0', maxId: '1252' });
+    const offset = Number(params.get('offset'));
     offsets.push(offset);
     const rows = inputRows.slice(offset, offset + 200);
     return Response.json({ rows, nextOffset: rows.length ? offset + rows.length : null });
@@ -96,7 +101,7 @@ test('pagination reads more than 1000 rows, including API caps below the request
     assert.deepEqual(rows, inputRows);
     assert.deepEqual(offsets, [0, 200, 400, 600, 800, 1000, 1200, 1253]);
     globalThis.fetch = (async () => Response.json({ rows: [{ id: 1 }], nextOffset: 0 })) as typeof fetch;
-    await assert.rejects(fetchSupabaseRows('protagon-joinville', 'geral'), /paginação/);
+    await assert.rejects(fetchSupabaseRows('protagon-joinville', 'met'), /paginação/);
   } finally { globalThis.fetch = original; }
 });
 
@@ -131,6 +136,7 @@ test('migration switches city leads and all advertising to Supabase, preserving 
     if (url.searchParams.has('config')) return Response.json({ enabled: true });
     if (url.pathname === '/api/supabase') {
       const dataset = url.searchParams.get('dataset');
+      if (url.searchParams.has('bounds')) return Response.json({ minId: '1', maxId: '2' });
       if (url.searchParams.get('offset') !== '0') return Response.json({ rows: [], nextOffset: null });
       const rows = dataset === 'geral' ? [
         { id: 1, email: 'met@example.test', data_hora: '2026-10-19T01:30:00+00:00', utm_campaign: '[METEÓRICO] [PG01]', renda: 'De R$5.001 a R$7.500' },
@@ -160,6 +166,47 @@ test('migration switches city leads and all advertising to Supabase, preserving 
     assert.ok(!calls.some(url => /registro[s]?_leads_dedup/.test(url)));
   } finally { globalThis.fetch = original; }
 });
+
+test('lead windows preserve all rows across empty intervals and API page limits', async () => {
+  const original = globalThis.fetch;
+  const source = [...Array.from({ length: 1253 }, (_, id) => ({ id })), ...Array.from({ length: 600 }, (_, n) => ({ id: 10000 + n }))];
+  const windows = new Set<number>();
+  globalThis.fetch = (async (input: any) => {
+    const params = new URL(String(input), 'https://example.test').searchParams;
+    if (params.has('bounds')) return Response.json({ minId: '0', maxId: '10599' });
+    const from = Number(params.get('from')), to = Number(params.get('to')), offset = Number(params.get('offset'));
+    windows.add(from);
+    assert.ok(to - from < 5000);
+    const rows = source.filter(row => row.id >= from && row.id <= to).slice(offset, offset + 200);
+    return Response.json({ rows, nextOffset: rows.length ? offset + rows.length : null });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await fetchSupabaseRows('protagon-sao-paulo', 'geral'), source);
+    assert.deepEqual([...windows].sort((a, b) => a - b), [0, 5000, 10000]);
+    globalThis.fetch = (async () => Response.json({ minId: null, maxId: null })) as typeof fetch;
+    assert.deepEqual(await fetchSupabaseRows('protagon-sao-paulo', 'geral'), []);
+    globalThis.fetch = (async () => Response.json({ minId: 'invalid', maxId: '10' })) as typeof fetch;
+    await assert.rejects(fetchSupabaseRows('protagon-sao-paulo', 'geral'), /intervalo/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('bounds use only the fixed read-only RPC and timeout responses contain no upstream details', async () => withServerKey(async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init: RequestInit) => {
+    assert.equal(new URL(input).pathname, '/rest/v1/rpc/dashboard_protagon_lead_bounds');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(String(init.body)), { city: 'protagon-sao-paulo' });
+    return Response.json({ minId: '21486', maxId: '154000' });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual((await request('?city=protagon-sao-paulo&dataset=geral&bounds=1')).data, { minId: '21486', maxId: '154000' });
+    globalThis.fetch = (async () => Response.json({ code: '57014', message: 'sensitive query details' }, { status: 500 })) as typeof fetch;
+    const response = await request('?city=protagon-sao-paulo&dataset=geral&from=0&to=4999');
+    assert.equal(response.statusCode, 502);
+    assert.equal(response.data.code, 'SOURCE_TIMEOUT');
+    assert.ok(!JSON.stringify(response.data).includes('sensitive'));
+  } finally { globalThis.fetch = original; }
+}));
 
 test('campaign picker reads Supabase traffic and compares ISO dates when a campaign is paused', async () => {
   const original = globalThis.fetch;

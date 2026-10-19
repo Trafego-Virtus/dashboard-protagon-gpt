@@ -31,7 +31,10 @@ essa tabela mantém o histórico de tráfego usado nos cálculos existentes.
   arbitrárias. As views existentes mantêm suas definições e dependências.
 - `trafego_protagon_revisao` é uma área de revisão de importação e não compõe métricas.
 - A leitura é paginada, inclusive quando o limite de linhas da API for inferior
-  ao tamanho solicitado. Os registros excluídos e de teste são desconsiderados.
+  ao tamanho solicitado. Para leads, cada consulta é limitada a um intervalo de
+  5.000 IDs, com no máximo dois intervalos simultâneos. Isso evita reprocessar
+  todo o histórico a cada página e exceder o timeout da API. Intervalos vazios
+  não encerram a leitura. Os registros excluídos e de teste são desconsiderados.
 - Os timestamps dos leads são convertidos para o dia em São Paulo. Os valores
   numéricos de investimento são preservados, assim como a reconciliação por
   contato/funil e as regras de MQL existentes.
@@ -62,6 +65,14 @@ no código ou no GitHub. A chave legada `service_role` também é aceita em
 `SUPABASE_SERVICE_ROLE_KEY`. As permissões/RLS do banco não são alteradas.
 Para reverter temporariamente às fontes anteriores, configure
 `SUPABASE_ENABLED=false` e publique novamente.
+
+A migração `supabase/migrations/20261019164000_dashboard_lead_bounds.sql` já foi
+aplicada ao projeto em 19/10/2026. Ela cria uma função de leitura dos limites de
+IDs das views autorizadas, executável somente por `service_role`, com timeout
+de 45 segundos limitado à função. Não altera as views, as tabelas ou as regras
+de acesso existentes. Em uma instalação nova, aplique essa migração antes de
+ativar a integração. O limite superior é fixado no início de cada atualização;
+leads inseridos depois entram na próxima atualização.
 
 O fluxo das quatro praças ativadas é: Supabase → `/api/supabase` → adaptação dos
 campos → filtros de período → cálculos → componentes. A atualização manual e a
