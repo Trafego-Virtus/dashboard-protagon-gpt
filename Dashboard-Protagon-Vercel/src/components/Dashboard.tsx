@@ -447,10 +447,18 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
                 <span>Dados acumulados até o momento (sem filtro de data)</span>
               </div>
             )}
+            {rawData?.leadsUpdatedAt && (
+              <span className="text-[10px] sm:text-xs text-zinc-400"
+                title="Os leads são atualizados automaticamente a cada 5 minutos.">
+                Leads até {new Date(rawData.leadsUpdatedAt).toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                })} · a cada 5 min
+              </span>
+            )}
             <button 
               onClick={() => setRefreshKey(k => k + 1)} 
               className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap"
-              title="Atualizar dados do Google Sheets"
+              title="Buscar os dados mais recentes disponíveis"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-yellow-500' : 'text-zinc-400'}`} />
               <span className="hidden sm:inline">Atualizar Dados</span>

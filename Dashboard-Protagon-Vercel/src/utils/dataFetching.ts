@@ -8,6 +8,7 @@ export { DASHBOARDS } from './dashboardSources';
 export interface RawDashboardData {
   dashboardId?: DashboardId;
   fetchedAt?: string;
+  leadsUpdatedAt?: string;
   dataSource?: 'supabase' | 'sheets';
   main: any[];
   ingressos: any[];

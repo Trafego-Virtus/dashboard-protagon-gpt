@@ -30,11 +30,14 @@ essa tabela mantém o histórico de tráfego usado nos cálculos existentes.
   `registro_leads_dedup` nem `registros_leads_dedup`, nem permite informar tabelas
   arbitrárias. As views existentes mantêm suas definições e dependências.
 - `trafego_protagon_revisao` é uma área de revisão de importação e não compõe métricas.
-- A leitura é paginada, inclusive quando o limite de linhas da API for inferior
-  ao tamanho solicitado. Para leads, cada consulta é limitada a um intervalo de
-  5.000 IDs, com no máximo dois intervalos simultâneos. Isso evita reprocessar
-  todo o histórico a cada página e exceder o timeout da API. Intervalos vazios
-  não encerram a leitura. Os registros excluídos e de teste são desconsiderados.
+- Os leads são preparados em segundo plano a cada cinco minutos, somente a partir
+  das quatro views autorizadas. Cada carga lê uma versão imutável em páginas de
+  1.000 registros, com até três páginas simultâneas, sem repetir as consultas
+  pesadas. O tráfego também usa páginas de até 1.000 registros; limites menores
+  da API não truncam os dados. Registros excluídos e de teste são desconsiderados.
+- A preparação publica a nova versão atomicamente. Versões anteriores duram 15
+  minutos para permitir cargas em andamento. Se a preparação atrasar mais de dez
+  minutos, uma nova carga falha explicitamente em vez de mostrar dados obsoletos.
 - Os timestamps dos leads são convertidos para o dia em São Paulo. Os valores
   numéricos de investimento são preservados, assim como a reconciliação por
   contato/funil e as regras de MQL existentes.
@@ -66,19 +69,24 @@ no código ou no GitHub. A chave legada `service_role` também é aceita em
 Para reverter temporariamente às fontes anteriores, configure
 `SUPABASE_ENABLED=false` e publique novamente.
 
-A migração `supabase/migrations/20261019164000_dashboard_lead_bounds.sql` já foi
-aplicada ao projeto em 19/10/2026. Ela cria uma função de leitura dos limites de
-IDs das views autorizadas, executável somente por `service_role`, com timeout
-de 45 segundos limitado à função. Não altera as views, as tabelas ou as regras
-de acesso existentes. Em uma instalação nova, aplique essa migração antes de
-ativar a integração. O limite superior é fixado no início de cada atualização;
-leads inseridos depois entram na próxima atualização.
+As migrações em `supabase/migrations/` foram aplicadas ao projeto em 19/10/2026.
+Em uma instalação nova, aplique-as antes de ativar a integração. A função antiga
+`dashboard_protagon_lead_bounds` permanece compatível com sessões anteriores.
 
-O fluxo das quatro praças ativadas é: Supabase → `/api/supabase` → adaptação dos
-campos → filtros de período → cálculos → componentes. A atualização manual e a
-reconsulta a cada cinco minutos leem o estado atual do banco; a importação e
-atualização das tabelas no Supabase continuam sob responsabilidade do processo
-que já as alimenta.
+A migração `20261019180000_dashboard_lead_snapshots.sql` adiciona duas tabelas de
+leitura com RLS e acesso exclusivo do servidor, uma função de leitura e a rotina
+de preparação. Somente o proprietário do banco pode executar a preparação.
+Os quatro jobs `protagon-snapshot-*` são escalonados para evitar scans simultâneos.
+Acompanhe falhas em `cron.job_run_details` e o horário de preparação em
+`dashboard_protagon_snapshots`. A limpeza diária remove somente logs antigos
+pertencentes a esses jobs. Nenhuma tabela ou permissão de origem foi alterada.
+
+O fluxo é: views autorizadas → preparação automática → `/api/supabase` → adaptação
+→ filtros de período → cálculos → componentes. A tela mostra a data/hora de
+origem dos leads. O botão Atualizar Dados e a reconsulta a cada cinco minutos
+buscam a versão preparada mais recente; não forçam um processamento completo.
+Há um atraso de até cerca de cinco minutos mais o tempo de preparação em relação
+às views. A importação que alimenta o Supabase continua no processo existente.
 
 ## Fontes anteriores de leads — Google Sheets
 

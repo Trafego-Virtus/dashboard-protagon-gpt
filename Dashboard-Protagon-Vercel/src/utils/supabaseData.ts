@@ -1,6 +1,6 @@
 import { normalizeLead } from './leadData';
 import type { DashboardId } from './dashboardSources';
-import { hasSupabaseSource, SUPABASE_DATASETS, SUPABASE_LEAD_ID_WINDOW, type SupabaseDataset } from './supabaseSources';
+import { hasSupabaseSource, SUPABASE_DATASETS, type SupabaseDataset } from './supabaseSources';
 
 type Row = Record<string, any>;
 let configCache: { promise: Promise<boolean>; expires: number } | undefined;
@@ -20,37 +20,61 @@ export async function usesSupabase(city: DashboardId, forceRefresh = false): Pro
   catch (error) { if (configCache === entry) configCache = undefined; throw error; }
 }
 
-export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
-  if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
-  if (dataset !== 'geral') return fetchPages(city, dataset);
-
-  const response = await fetch(`/api/supabase?${new URLSearchParams({ city, dataset, bounds: '1' })}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error('Não foi possível iniciar a leitura dos leads no Supabase. Tente novamente.');
-  const bounds = await response.json();
-  if (bounds.minId === null && bounds.maxId === null) return [];
-  const first = Number(bounds.minId), last = Number(bounds.maxId);
-  if (bounds.minId == null || bounds.maxId == null || !/^\d+$/.test(String(bounds.minId))
-    || !/^\d+$/.test(String(bounds.maxId)) || !Number.isSafeInteger(first) || !Number.isSafeInteger(last)
-    || first < 0 || last < first) throw new Error('O Supabase retornou um intervalo de leads inválido.');
-
-  const rows: Row[] = [];
-  // A fixed upper bound prevents new inserts from moving pages during this load.
-  // Empty ID intervals are normal (other products/cities); always continue.
-  for (let from = first; from <= last; from += SUPABASE_LEAD_ID_WINDOW * 2) {
-    const starts = [from, from + SUPABASE_LEAD_ID_WINDOW].filter(start => start <= last);
-    const chunks = await Promise.all(starts.map(start => fetchPages(city, dataset, {
-      from: String(start), to: String(Math.min(start + SUPABASE_LEAD_ID_WINDOW - 1, last)),
-    })));
-    for (const chunk of chunks) rows.push(...chunk);
-  }
-  return rows;
+// Workers start the next item as soon as one finishes, without batch barriers.
+async function mapConcurrent<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const result: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      result[index] = await fn(items[index]);
+    }
+  }));
+  return result;
 }
 
-async function fetchPages(city: DashboardId, dataset: SupabaseDataset, range: Record<string, string> = {}): Promise<Row[]> {
+export async function fetchSupabaseLeadSnapshot(city: DashboardId) {
+  if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
+  const readPage = async (page: number, version?: string) => {
+    const params = new URLSearchParams({ city, dataset: 'geral', prepared: '1', page: String(page) });
+    if (version) params.set('version', version);
+    const response = await fetch(`/api/supabase?${params}`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.code === 'STALE_SNAPSHOT'
+      ? 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.'
+      : 'Não foi possível atualizar os leads no Supabase. Tente novamente.');
+    if (!Array.isArray(data.rows) || data.page !== page || data.pageSize !== 1000
+      || !Number.isSafeInteger(data.totalRows) || data.totalRows < 0 || data.totalRows > 1_000_000
+      || typeof data.snapshot !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.snapshot)
+      || (version && data.snapshot !== version) || !Number.isFinite(Date.parse(data.sourceUpdatedAt))
+      || data.rows.length !== Math.min(1000, Math.max(0, data.totalRows - page * 1000))) {
+      throw new Error('A leitura dos leads retornou dados incompletos. Tente atualizar novamente.');
+    }
+    return data as { rows: Row[]; totalRows: number; snapshot: string; sourceUpdatedAt: string };
+  };
+  const first = await readPage(0);
+  const remaining = Array.from({ length: Math.max(0, Math.ceil(first.totalRows / 1000) - 1) }, (_, i) => i + 1);
+  const pages = await mapConcurrent(remaining, 3, async page => {
+    const result = await readPage(page, first.snapshot);
+    if (result.totalRows !== first.totalRows || result.sourceUpdatedAt !== first.sourceUpdatedAt) {
+      throw new Error('A versão dos leads mudou durante a leitura. Tente atualizar novamente.');
+    }
+    return result.rows;
+  });
+  // Pin every page to the same immutable version, even during a background refresh.
+  return { rows: first.rows.concat(...pages), sourceUpdatedAt: first.sourceUpdatedAt };
+}
+
+export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
+  if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
+  return dataset === 'geral' ? (await fetchSupabaseLeadSnapshot(city)).rows : fetchPages(city, dataset);
+}
+
+async function fetchPages(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
   const rows: Row[] = [];
   let offset = 0;
   while (offset <= 1_000_000) {
-    const params = new URLSearchParams({ city, dataset, offset: String(offset), ...range });
+    const params = new URLSearchParams({ city, dataset, offset: String(offset) });
     const response = await fetch(`/api/supabase?${params}`, { cache: 'no-store' });
     if (!response.ok) throw new Error(`Não foi possível atualizar ${dataset} no Supabase. Tente novamente.`);
     const page = await response.json();
@@ -68,11 +92,13 @@ async function fetchPages(city: DashboardId, dataset: SupabaseDataset, range: Re
 const text = (value: unknown) => String(value ?? '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
+const leadDateFormatter = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
 export function normalizeSupabaseLead(input: Row, campaignFunnels = new Map<string, { attribution: string; subfunnel: string }>()) {
   const row = normalizeLead(input);
   // Timestamps are stored in UTC; preserve the original Brazilian business day.
   if (/^\d{4}-\d{2}-\d{2}T/.test(row.data_hora || '') && Number.isFinite(Date.parse(row.data_hora))) {
-    row.data_hora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date(row.data_hora));
+    row.data_hora = leadDateFormatter.format(new Date(row.data_hora));
   }
   row.id = String(row.id ?? '');
   row.renda = String(row.renda || '').replace(/_/g, ' ');
@@ -117,11 +143,13 @@ export function normalizeSupabaseDashboard(datasets: Record<SupabaseDataset, Row
 
 export async function fetchSupabaseDashboard(city: DashboardId) {
   const datasets = {} as Record<SupabaseDataset, Row[]>;
-  // Bound concurrency instead of requesting dozens of lead pages at once.
-  for (let i = 0; i < SUPABASE_DATASETS.length; i += 3) {
-    await Promise.all(SUPABASE_DATASETS.slice(i, i + 3).map(async dataset => {
-      datasets[dataset] = await fetchSupabaseRows(city, dataset);
-    }));
-  }
-  return normalizeSupabaseDashboard(datasets);
+  let leadsUpdatedAt: string | undefined;
+  await mapConcurrent(SUPABASE_DATASETS, 3, async dataset => {
+    if (dataset === 'geral') {
+      const snapshot = await fetchSupabaseLeadSnapshot(city);
+      datasets.geral = snapshot.rows;
+      leadsUpdatedAt = snapshot.sourceUpdatedAt;
+    } else datasets[dataset] = await fetchSupabaseRows(city, dataset);
+  });
+  return { ...normalizeSupabaseDashboard(datasets), leadsUpdatedAt };
 }

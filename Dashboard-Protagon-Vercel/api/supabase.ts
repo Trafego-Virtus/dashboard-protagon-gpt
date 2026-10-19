@@ -52,10 +52,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
   const isLead = params.get('dataset') === 'geral';
+  const isPrepared = isLead && params.get('prepared') === '1';
   const isBounds = isLead && params.get('bounds') === '1';
+  const pageText = params.get('page') || '0';
+  const page = Number(pageText);
+  const version = params.get('version');
+  if (isPrepared && (!/^\d+$/.test(pageText) || !Number.isSafeInteger(page) || page > 1000
+    || (version !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(version)))) {
+    send(400, { error: 'Página de leads inválida.' });
+    return;
+  }
   const firstId = Number(params.get('from'));
   const lastId = Number(params.get('to'));
-  if (isLead && !isBounds && (!params.has('from') || !params.has('to')
+  if (isLead && !isBounds && !isPrepared && (!params.has('from') || !params.has('to')
     || !/^\d+$/.test(params.get('from')!) || !/^\d+$/.test(params.get('to')!)
     || !Number.isSafeInteger(firstId) || !Number.isSafeInteger(lastId) || firstId < 0
     || lastId < firstId || lastId - firstId >= SUPABASE_LEAD_ID_WINDOW)) {
@@ -63,8 +72,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
   try {
-    const url = new URL(`${PROJECT_URL}/rest/v1/${isBounds ? 'rpc/dashboard_protagon_lead_bounds' : table}`);
-    if (!isBounds) {
+    const isRpc = isPrepared || isBounds;
+    const url = new URL(`${PROJECT_URL}/rest/v1/${isPrepared ? 'rpc/dashboard_protagon_lead_page'
+      : isBounds ? 'rpc/dashboard_protagon_lead_bounds' : table}`);
+    if (!isRpc) {
       url.searchParams.set('select', isLead ? LEAD_COLUMNS : '*');
       url.searchParams.set('order', isLead ? 'id.asc' : '_origem_planilha.asc,_origem_aba.asc,_origem_linha.asc');
       url.searchParams.set('offset', String(offset));
@@ -77,13 +88,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const headers: Record<string, string> = { apikey: key!, Accept: 'application/json', 'Accept-Profile': 'public' };
     // Legacy service_role JWTs require Bearer auth; new sb_secret keys use apikey.
     if (key!.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
-    if (isBounds) { headers['Content-Type'] = 'application/json'; headers['Content-Profile'] = 'public'; }
+    if (isRpc) { headers['Content-Type'] = 'application/json'; headers['Content-Profile'] = 'public'; }
     const response = await fetch(url, {
       headers, cache: 'no-store', signal: AbortSignal.timeout(isBounds ? 50000 : 25000),
-      ...(isBounds ? { method: 'POST', body: JSON.stringify({ city: params.get('city') }) } : {}),
+      ...(isRpc ? { method: 'POST', body: JSON.stringify(isPrepared
+        ? { p_city: params.get('city'), p_page: page, p_version: version }
+        : { city: params.get('city') }) } : {}),
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+      if (isPrepared && error.code === 'P0001') {
+        send(503, { code: 'STALE_SNAPSHOT', error: 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.' });
+        return;
+      }
       const code = error.code === '57014' ? 'SOURCE_TIMEOUT'
         : response.status === 401 || response.status === 403 ? 'SOURCE_ACCESS_DENIED' : 'SOURCE_QUERY_FAILED';
       send(502, { code, error: code === 'SOURCE_TIMEOUT'
@@ -91,11 +108,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         : 'Não foi possível atualizar os dados do Supabase. Confira a configuração do servidor e tente novamente.' });
       return;
     }
-    if (isBounds) { send(200, await response.json()); return; }
+    if (isRpc) { send(200, await response.json()); return; }
     const rows = await response.json();
     if (!Array.isArray(rows)) throw new Error('Resposta inválida');
     // Advance by the actual number returned, even if the project's API cap is
-    // below 500. A final empty page terminates pagination without truncation.
+    // below the requested page size. A final empty page avoids truncation.
     send(200, { rows, nextOffset: rows.length ? offset + rows.length : null });
   } catch {
     // Do not log upstream bodies, credentials or lead records.

@@ -47,7 +47,7 @@ test('secret is server-only and REST selects only authorized dashboard lead colu
     const url = new URL(input);
     assert.equal(url.origin, 'https://oogehvamgxiagmfgejpu.supabase.co');
     assert.equal(url.pathname, '/rest/v1/leads_protagon_joinville');
-    assert.equal(url.searchParams.get('limit'), '500');
+    assert.equal(url.searchParams.get('limit'), '1000');
     assert.equal(url.searchParams.get('order'), 'id.asc');
     assert.equal(url.searchParams.get('or'), '(deleted.is.null,deleted.eq.0)');
     assert.equal(url.searchParams.get('and'), '(id.gte.10000,id.lte.14999)');
@@ -90,14 +90,14 @@ test('pagination reads more than 1000 rows, including API caps below the request
   const offsets: number[] = [];
   globalThis.fetch = (async (input: any) => {
     const params = new URL(String(input), 'https://example.test').searchParams;
-    if (params.has('bounds')) return Response.json({ minId: '0', maxId: '1252' });
+
     const offset = Number(params.get('offset'));
     offsets.push(offset);
     const rows = inputRows.slice(offset, offset + 200);
     return Response.json({ rows, nextOffset: rows.length ? offset + rows.length : null });
   }) as typeof fetch;
   try {
-    const rows = await fetchSupabaseRows('protagon-joinville', 'geral');
+    const rows = await fetchSupabaseRows('protagon-joinville', 'met');
     assert.deepEqual(rows, inputRows);
     assert.deepEqual(offsets, [0, 200, 400, 600, 800, 1000, 1200, 1253]);
     globalThis.fetch = (async () => Response.json({ rows: [{ id: 1 }], nextOffset: 0 })) as typeof fetch;
@@ -136,14 +136,13 @@ test('migration switches city leads and all advertising to Supabase, preserving 
     if (url.searchParams.has('config')) return Response.json({ enabled: true });
     if (url.pathname === '/api/supabase') {
       const dataset = url.searchParams.get('dataset');
-      if (url.searchParams.has('bounds')) return Response.json({ minId: '1', maxId: '2' });
-      if (url.searchParams.get('offset') !== '0') return Response.json({ rows: [], nextOffset: null });
+      if (!url.searchParams.has('prepared') && url.searchParams.get('offset') !== '0') return Response.json({ rows: [], nextOffset: null });
       const rows = dataset === 'geral' ? [
         { id: 1, email: 'met@example.test', data_hora: '2026-10-19T01:30:00+00:00', utm_campaign: '[METEÓRICO] [PG01]', renda: 'De R$5.001 a R$7.500' },
         { id: 2, email: 'gd@example.test', data_hora: '2026-10-18T12:00:00+00:00', utm_campaign: '[FORMS NATIVO]', clint: 'SIM' },
       ] : dataset === 'met' ? [{ Data: '2026-10-18', 'Valor Gasto': 123.45, 'NOME DA CAMPANHA': '[METEÓRICO] [PG01]' }]
         : dataset === 'gd' ? [{ Data: '2026-10-18', 'Valor Gasto': 15.25, 'NOME DA CAMPANHA': '[FORMS NATIVO]' }] : [];
-      return Response.json({ rows, nextOffset: rows.length ? rows.length : null });
+      return Response.json(dataset === 'geral' ? snapshotPage(rows, 0) : { rows, nextOffset: rows.length ? rows.length : null });
     }
     const source = new URL(url.searchParams.get('url')!);
     assert.equal(source.searchParams.get('gid'), '1524417673', 'Only Sendflow remains in Sheets for Goiânia');
@@ -167,28 +166,81 @@ test('migration switches city leads and all advertising to Supabase, preserving 
   } finally { globalThis.fetch = original; }
 });
 
-test('lead windows preserve all rows across empty intervals and API page limits', async () => {
+const snapshotVersion = '12345678-1234-1234-1234-123456789012';
+const sourceUpdatedAt = '2026-10-19T18:00:00+00:00';
+function snapshotPage(rows: any[], page: number) {
+  return { rows: rows.slice(page * 1000, (page + 1) * 1000), page, pageSize: 1000,
+    snapshot: snapshotVersion, totalRows: rows.length, sourceUpdatedAt };
+}
+
+test('prepared leads preserve all rows and order across parallel immutable pages', async () => {
   const original = globalThis.fetch;
-  const source = [...Array.from({ length: 1253 }, (_, id) => ({ id })), ...Array.from({ length: 600 }, (_, n) => ({ id: 10000 + n }))];
-  const windows = new Set<number>();
+  const source = Array.from({ length: 5253 }, (_, id) => ({ id }));
+  const calls: number[] = [];
+  let active = 0, maxActive = 0;
   globalThis.fetch = (async (input: any) => {
     const params = new URL(String(input), 'https://example.test').searchParams;
-    if (params.has('bounds')) return Response.json({ minId: '0', maxId: '10599' });
-    const from = Number(params.get('from')), to = Number(params.get('to')), offset = Number(params.get('offset'));
-    windows.add(from);
-    assert.ok(to - from < 5000);
-    const rows = source.filter(row => row.id >= from && row.id <= to).slice(offset, offset + 200);
-    return Response.json({ rows, nextOffset: rows.length ? offset + rows.length : null });
+    const page = Number(params.get('page'));
+    assert.equal(params.get('prepared'), '1');
+    assert.equal(params.get('version'), page ? snapshotVersion : null);
+    calls.push(page);
+    active++; maxActive = Math.max(maxActive, active);
+    await new Promise(resolve => setTimeout(resolve, page % 2 ? 4 : 1));
+    active--;
+    return Response.json(snapshotPage(source, page));
   }) as typeof fetch;
   try {
     assert.deepEqual(await fetchSupabaseRows('protagon-sao-paulo', 'geral'), source);
-    assert.deepEqual([...windows].sort((a, b) => a - b), [0, 5000, 10000]);
-    globalThis.fetch = (async () => Response.json({ minId: null, maxId: null })) as typeof fetch;
+    assert.deepEqual(calls, [0, 1, 2, 3, 4, 5]);
+    assert.equal(maxActive, 3);
+    globalThis.fetch = (async () => Response.json(snapshotPage([], 0))) as typeof fetch;
     assert.deepEqual(await fetchSupabaseRows('protagon-sao-paulo', 'geral'), []);
-    globalThis.fetch = (async () => Response.json({ minId: 'invalid', maxId: '10' })) as typeof fetch;
-    await assert.rejects(fetchSupabaseRows('protagon-sao-paulo', 'geral'), /intervalo/);
+    globalThis.fetch = (async () => Response.json({ ...snapshotPage(source, 0), rows: [{ id: 0 }] })) as typeof fetch;
+    await assert.rejects(fetchSupabaseRows('protagon-sao-paulo', 'geral'), /incompletos/);
   } finally { globalThis.fetch = original; }
 });
+
+test('prepared reads reject version changes, truncated pages and stale snapshots', async () => {
+  const original = globalThis.fetch;
+  const source = Array.from({ length: 1253 }, (_, id) => ({ id }));
+  try {
+    for (const change of [{ snapshot: '12345678-1234-1234-1234-123456789099' }, { rows: [] },
+      { totalRows: 1254 }, { sourceUpdatedAt: '2026-10-19T18:01:00+00:00' }]) {
+      globalThis.fetch = (async (input: any) => {
+        const page = Number(new URL(String(input), 'https://example.test').searchParams.get('page'));
+        return Response.json({ ...snapshotPage(source, page), ...(page ? change : {}) });
+      }) as typeof fetch;
+      await assert.rejects(fetchSupabaseRows('protagon-sao-paulo', 'geral'), /incompletos|versão/);
+    }
+    globalThis.fetch = (async () => Response.json({ code: 'STALE_SNAPSHOT' }, { status: 503 })) as typeof fetch;
+    await assert.rejects(fetchSupabaseRows('protagon-sao-paulo', 'geral'), /atrasada/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('prepared API uses only the read RPC, validates inputs and reports stale data safely', async () => withServerKey(async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init: RequestInit) => {
+    assert.equal(new URL(input).pathname, '/rest/v1/rpc/dashboard_protagon_lead_page');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(String(init.body)), { p_city: 'protagon-sao-paulo', p_page: 0, p_version: null });
+    return Response.json(snapshotPage([{ id: 1 }], 0));
+  }) as typeof fetch;
+  const query = '?city=protagon-sao-paulo&dataset=geral&prepared=1';
+  try {
+    const response = await request(query);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers['cache-control'], 'no-store');
+    assert.deepEqual(response.data, snapshotPage([{ id: 1 }], 0));
+    for (const invalid of ['&page=-1', '&page=1.1', '&page=1001', '&version=arbitrary']) {
+      assert.equal((await request(query + invalid)).statusCode, 400);
+    }
+    globalThis.fetch = (async () => Response.json({ code: 'P0001', message: 'private details' }, { status: 400 })) as typeof fetch;
+    const failed = await request(query);
+    assert.equal(failed.statusCode, 503);
+    assert.equal(failed.data.code, 'STALE_SNAPSHOT');
+    assert.ok(!JSON.stringify(failed.data).includes('private'));
+  } finally { globalThis.fetch = original; }
+}));
 
 test('bounds use only the fixed read-only RPC and timeout responses contain no upstream details', async () => withServerKey(async () => {
   const original = globalThis.fetch;
