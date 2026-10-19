@@ -155,10 +155,6 @@
       "sha256": "72eb874fb27cbca5164d00043df769e9bb30b6d432015673e1c2a6d63d4157a1"
     },
     {
-      "path": "src/utils/campaignExtractor.ts",
-      "sha256": "72b3af80a6ad410d00c77f2fcc86ee813ec0072af1b2052af3f7e25217fd4163"
-    },
-    {
       "path": "src/utils/feedbackClipboardExport.ts",
       "sha256": "aa24f300edb63a6808307c8dfe169900141b819c3f1685564d8ed23f965bbc0a"
     },
@@ -225,7 +221,7 @@
     {
       "path": "src/utils/dataFetching.ts",
       "original_sha256": "e8b36d751fcd773be3d1cb0ba65d29d7f7bccb0ff103b685917be7e0a7212715",
-      "current_sha256": "d3c5e828eb73f38db99179c7638db48ccb2ec246706c0f19de01508bc0cf88fe"
+      "current_sha256": "d1c984355345ce3e4b55c5d02a97001116570dd8d7182f58f60c4e19a846a53d"
     },
     {
       "path": "src/utils/format.ts",
@@ -256,6 +252,11 @@
       "path": "src/App.tsx",
       "original_sha256": "f6ab354fd0ac6e153dcd61a48550ab9eb2e3b52b3e091ba77ca4d8835ae5fce0",
       "current_sha256": "c888b39592a7d4ec1016006418bf84f2741d9851b6771124b8219a3f3a72471e"
+    },
+    {
+      "path": "src/utils/campaignExtractor.ts",
+      "original_sha256": "72b3af80a6ad410d00c77f2fcc86ee813ec0072af1b2052af3f7e25217fd4163",
+      "current_sha256": "6b2dc1e89c3ade7e523bf5fc4ae61af76a6b4da738aef0c3cd6d45e17fe283e0"
     }
   ],
   "added_application_files": [
@@ -270,6 +271,14 @@
     {
       "path": "src/utils/publishedTabs.ts",
       "sha256": "f6d9846f0321c83a42f8fcb4eb8caf39d566b25e57f15bb97d6d0d86b1486b47"
+    },
+    {
+      "path": "src/utils/supabaseSources.ts",
+      "sha256": "c84d36aca978bf123e51790a3cd5665ff9bed9d8fc5200e1b962cf3c1af31c52"
+    },
+    {
+      "path": "src/utils/supabaseData.ts",
+      "sha256": "2f360b847b3b2769bb67f8c57e5d115ee895dc0c94100f82d064f133e2643887"
     }
   ],
   "notes": [
@@ -277,7 +286,8 @@
     "GERAL is the sole lead source for the four updated cities; source IDs verified against Google Sheets and public CSV on 2026-10-15.",
     "Existing contact reconciliation, failure handling, refresh and creative status behavior retained.",
     "Webinar leads, advertising and quiz now read from dedicated PRO-WEB; id_pessoa supported and city attribution recovered from tracking when blank. Existing city ticket sources retained. Verified on 2026-10-15.",
-    "Workshop view removed from navigation and routing; webinar menu and page heading renamed to Teto Invisível - Webinário."
+    "Workshop view removed from navigation and routing; webinar menu and page heading renamed to Teto Invisível - Webinário.",
+    "Supabase integration added for the four city lead views and 24 advertising tables. Server-side secret configuration activates migration; Sheets remain available before activation. No direct raw dedup table access or database permission changes. Supplemental sources and PRO-WEB remain on Sheets. Schema and aggregate source checks performed on 2026-10-19; live REST end-to-end check requires the production server credential."
   ],
-  "target": "GitHub + Vercel, Node.js 22, Vite frontend and api/csv.ts function"
+  "target": "GitHub + Vercel, Node.js 22, Vite frontend, api/csv.ts and api/supabase.ts functions"
 }

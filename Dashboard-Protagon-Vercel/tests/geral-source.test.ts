@@ -31,6 +31,7 @@ test('loader reads only the new GERAL: legacy and auxiliary rows cannot inflate 
   const original = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (input: any) => {
+    if (String(input) === '/api/supabase?config=1') return Response.json({ enabled: false });
     const source = new URL(String(input), 'https://example.test').searchParams.get('url')!;
     calls.push(source);
     if (source.endsWith('/pubhtml')) return new Response('items.push({name: "OFF - GERAL", gid: "0"}); items.push({name: "GERAL", gid: "987654321"});');

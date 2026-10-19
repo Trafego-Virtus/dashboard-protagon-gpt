@@ -8,7 +8,68 @@ previsões, pesquisa de audiência, feedbacks de KPIs e testes.
 A atualização incorpora funis do Meteórico por página, filtro de campanhas de
 escala/teste, públicos, lista de leads e métricas de grupos do Sendflow.
 
-## Fontes de leads
+## Supabase — leads e tráfego das praças
+
+A integração usa o projeto **Dashboard Tráfego** (`oogehvamgxiagmfgejpu`), schema
+`public`, por uma API no servidor. A migração é ativada quando
+`SUPABASE_SECRET_KEY` estiver configurada. Sem essa variável, o dashboard mantém
+as fontes publicadas que já funcionavam.
+
+| Praça | View de leads | Prefixo das tabelas de tráfego |
+| --- | --- | --- |
+| Joinville | `leads_protagon_joinville` | `trafego_protagon_joinville_` |
+| Porto Alegre | `leads_protagon_porto_alegre` | `trafego_protagon_porto_alegre_` |
+| Goiânia | `leads_protagon_goiania` | `trafego_protagon_goiania_` |
+| São Paulo | `leads_protagon_sao_paulo` | `trafego_protagon_sao_paulo_` |
+
+Para cada praça, são consultados os sufixos `gd`, `vd`, `met`, `dc`,
+`dc_corredor_polones` e `workshop`. A visualização Workshop permanece removida;
+essa tabela mantém o histórico de tráfego usado nos cálculos existentes.
+
+- A API aceita somente as 28 fontes dessa lista. Não consulta diretamente
+  `registro_leads_dedup` nem `registros_leads_dedup`, nem permite informar tabelas
+  arbitrárias. As views existentes mantêm suas definições e dependências.
+- `trafego_protagon_revisao` é uma área de revisão de importação e não compõe métricas.
+- A leitura é paginada, inclusive quando o limite de linhas da API for inferior
+  ao tamanho solicitado. Os registros excluídos e de teste são desconsiderados.
+- Os timestamps dos leads são convertidos para o dia em São Paulo. Os valores
+  numéricos de investimento são preservados, assim como a reconciliação por
+  contato/funil e as regras de MQL existentes.
+- As views atuais não fornecem `Atribuição`/`Subfunil`. O adaptador reconhece
+  sinais explícitos de funil na campanha, ação, URL, tags e tipo de ingestão;
+  quando necessário, cruza campanhas com as tabelas de tráfego. Um código de
+  evento sozinho não define o funil. Sem evidência, não inventa uma atribuição.
+- Com Supabase ativado, falhas de leitura exibem erro. Não há troca silenciosa
+  para as planilhas nem soma dos leads de duas fontes.
+- **Cuiabá, Teto Invisível - Webinário/PRO-WEB, Quiz, Guardiões, ingressos,
+  cadeiras e Sendflow** continuam nas fontes existentes, pois não há fontes
+  correspondentes disponíveis no Supabase para migrá-los. A regra de ingressos
+  e cadeiras de São Paulo/Goiânia continua preservada.
+
+### Ativar em produção
+
+1. No projeto Supabase **Dashboard Tráfego**, abra **Settings → API Keys** e
+   obtenha uma chave **secret** do servidor (`sb_secret_...`).
+2. No projeto Vercel **dashboard-protagon-gpt**, abra **Settings → Environment
+   Variables**, adicione `SUPABASE_SECRET_KEY` no ambiente **Production** e faça
+   **Redeploy**. Configure Preview separadamente se precisar validar nesse ambiente.
+3. Confira `/api/supabase?config=1`: deve retornar `{"enabled":true}`. Depois,
+   atualize o dashboard e confira uma praça e período conhecidos. Essa resposta
+   indica configuração presente; a leitura de dados confirma se a chave é válida.
+
+A chave fica somente no servidor, sem prefixo `VITE_`, e não deve ser inserida
+no código ou no GitHub. A chave legada `service_role` também é aceita em
+`SUPABASE_SERVICE_ROLE_KEY`. As permissões/RLS do banco não são alteradas.
+Para reverter temporariamente às fontes anteriores, configure
+`SUPABASE_ENABLED=false` e publique novamente.
+
+O fluxo das quatro praças ativadas é: Supabase → `/api/supabase` → adaptação dos
+campos → filtros de período → cálculos → componentes. A atualização manual e a
+reconsulta a cada cinco minutos leem o estado atual do banco; a importação e
+atualização das tabelas no Supabase continuam sob responsabilidade do processo
+que já as alimenta.
+
+## Fontes anteriores de leads — Google Sheets
 
 As quatro URLs publicadas enviadas pelo usuário já estavam no ZIP. O problema
 estava no identificador da aba: `gid=0` passou a ser **OFF - GERAL**.
@@ -37,7 +98,7 @@ Os novos identificadores foram conferidos no Google Sheets e na publicação web
 - A regra do ZIP que zera ingressos/cadeiras de São Paulo e Goiânia foi mantida.
 - As demais fontes das praças do ZIP, incluindo Cuiabá, foram mantidas.
 
-O fluxo é: Google Sheets publicado → `/api/csv` → leitura dos cabeçalhos e
+Quando Supabase não está ativado, o fluxo é: Google Sheets publicado → `/api/csv` → leitura dos cabeçalhos e
 normalização → filtros de período → cálculos → componentes do dashboard.
 O Firebase continua atendendo às configurações e aos testes do aplicativo.
 
@@ -97,6 +158,9 @@ bun install --frozen-lockfile
 npm run dev
 ```
 
+Para usar Supabase localmente, copie `.env.example` para `.env` nessa pasta e
+configure a chave do servidor antes de executar `npm run dev`.
+
 Abra `http://localhost:3000`. Para validar e executar o build:
 
 ```sh
@@ -109,5 +173,6 @@ npm run preview
 O dashboard permite atualização manual e reconsulta a cada cinco minutos enquanto
 está visível. A publicação do Google Sheets também pode ter atraso próprio.
 Os testes cobrem seleção da GERAL, exclusão da aba antiga, cabeçalhos, contagens,
-atribuição, filtros de criativos, cache e falhas da API. Usam dados sintéticos;
+atribuição, filtros de criativos, cache, paginação Supabase, seleção de fontes,
+datas, valores numéricos e falhas das APIs. Usam dados sintéticos;
 as bases de leads e os arquivos temporários do ZIP não fazem parte do código.

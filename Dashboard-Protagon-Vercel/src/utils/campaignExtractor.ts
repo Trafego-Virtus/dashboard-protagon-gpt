@@ -2,6 +2,9 @@ import { CampanhaVinculada, FunilType } from '../types/testes';
 import { DASHBOARDS } from './dataFetching';
 import { DashboardId } from './api';
 import Papa from 'papaparse';
+import { usesSupabase, fetchSupabaseRows } from './supabaseData';
+import type { SupabaseDataset } from './supabaseSources';
+import { parseDate } from './format';
 
 // Cache em memória de campanhas ativas para resposta instantânea
 interface CacheEntry {
@@ -47,9 +50,18 @@ export async function getCampaignsForFunil(
 
     // 2. Coleta apenas as URLs das planilhas de tráfego necessárias (evita carregar CRM/Geral/Ingressos)
     const urlsToFetch: string[] = [];
+    const supabaseRequests: (() => Promise<any[]>)[] = [];
     for (const p of pracasToFetch) {
       const d = DASHBOARDS[p];
       if (!d) continue;
+      if (await usesSupabase(p)) {
+        const datasets: SupabaseDataset[] = funil === 'meteorico' ? ['met']
+          : funil === 'venda-direta' ? ['vd']
+          : funil === 'geracao-demanda-form' || funil === 'geracao-demanda-captura' ? ['gd']
+          : ['gd', 'vd', 'dc'];
+        supabaseRequests.push(() => Promise.all(datasets.map(dataset => fetchSupabaseRows(p, dataset))).then(rows => rows.flat()));
+        continue;
+      }
 
       if (funil === 'geracao-demanda-form' || funil === 'geracao-demanda-captura') {
         if (d.GD_CSV_URL) urlsToFetch.push(d.GD_CSV_URL);
@@ -89,7 +101,7 @@ export async function getCampaignsForFunil(
       }
     });
 
-    const allSheetsData = await Promise.all(parsePromises);
+    const allSheetsData = await Promise.all([...parsePromises, ...supabaseRequests.map(load => load())]);
 
     // 4. Mapeia cada campanha para determinar o status mais recente
     const campStatusMap = new Map<string, { latestDate: string; status: string }>();
@@ -142,11 +154,9 @@ export async function getCampaignsForFunil(
           if (statusRaw === 'ACTIVE' || statusRaw === 'ATIVA' || statusRaw === 'ATIVO') {
             existing.status = statusRaw;
           } else if (dateStr && existing.latestDate) {
-            const partsA = dateStr.split('/').map(Number);
-            const partsB = existing.latestDate.split('/').map(Number);
-            if (partsA.length === 3 && partsB.length === 3) {
-              const timeA = new Date(partsA[2], partsA[1] - 1, partsA[0]).getTime();
-              const timeB = new Date(partsB[2], partsB[1] - 1, partsB[0]).getTime();
+            const timeA = parseDate(dateStr)?.getTime();
+            const timeB = parseDate(existing.latestDate)?.getTime();
+            if (timeA != null && timeB != null) {
               if (timeA >= timeB) {
                 existing.latestDate = dateStr;
                 existing.status = statusRaw;

@@ -3,11 +3,13 @@ import express from 'express';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import csvHandler from './api/csv.js';
+import supabaseHandler from './api/supabase.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const production = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 app.all('/api/csv', (req, res) => { void csvHandler(req, res); });
+app.all('/api/supabase', (req, res) => { void supabaseHandler(req, res); });
 app.use('/api', (_req, res) => { res.status(404).send('Rota não encontrada.'); });
 
 async function startServer() {

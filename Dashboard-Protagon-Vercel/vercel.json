@@ -7,6 +7,9 @@
   "functions": {
     "api/csv.ts": {
       "maxDuration": 60
+    },
+    "api/supabase.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

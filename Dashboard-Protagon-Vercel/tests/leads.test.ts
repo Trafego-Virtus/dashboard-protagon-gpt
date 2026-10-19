@@ -70,6 +70,7 @@ test('loader keeps all primary forms, expires cache, refreshes explicitly and ne
   let sawRefresh = false;
   const primary = 'data_hora,uuid,email,clint,Atribuição,Subfunil\n07/10/2026,u-1,lead@example.test,SIM,Geração de Demanda,Formulário Nativo';
   globalThis.fetch = (async (input: any, init: any) => {
+    if (String(input) === '/api/supabase?config=1') return Response.json({ enabled: false });
     calls++;
     assert.equal(init?.cache, 'no-store');
     const url = new URL(String(input), 'https://example.test');

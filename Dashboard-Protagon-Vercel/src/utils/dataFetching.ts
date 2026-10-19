@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { usesSupabase, fetchSupabaseDashboard } from './supabaseData';
 import { DASHBOARDS, type DashboardId } from './dashboardSources';
 import { normalizeLead } from './leadData';
 import { parsePublishedTabs, resolveGeralUrl } from './publishedTabs';
@@ -7,6 +8,7 @@ export { DASHBOARDS } from './dashboardSources';
 export interface RawDashboardData {
   dashboardId?: DashboardId;
   fetchedAt?: string;
+  dataSource?: 'supabase' | 'sheets';
   main: any[];
   ingressos: any[];
   cadeiras: any[];
@@ -20,6 +22,20 @@ export interface RawDashboardData {
   webinario?: any[];
   sendflowTrafego?: any[];
 }
+
+// Apply the same test-record exclusion to both data sources.
+const isTestOrDummyRow = (r: any) => {
+  if (!r || typeof r !== 'object') return true;
+  const email = String(r['email'] || r['Email'] || r['E-mail'] || '').trim().toLowerCase();
+  if (email.includes('teste@') || email === 'teste') return true;
+  const name = String(r['nome'] || r['Fn'] || r['Nome'] || r['full_name'] || '').trim().toLowerCase();
+  if (name === 'teste' || name.includes('<test lead:')) return true;
+  const prod = String(r['Produto Comprado'] || r['Produto'] || '').trim().toLowerCase();
+  if (prod === 'teste') return true;
+  const dateVal = String(r['Data Compra'] || r['data_hora'] || r['Data'] || '').trim();
+  if (dateVal.includes('1900') || dateVal.includes('01/01/00')) return true;
+  return false;
+};
 
 export const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
 const requestCache = new Map<string, { promise: Promise<RawDashboardData>; expiresAt: number }>();
@@ -71,6 +87,24 @@ export async function fetchRawDashboardData(dashboardId: DashboardId, forceRefre
         });
       });
     };
+
+    if (await usesSupabase(dashboardId, forceRefresh)) {
+      const hasSales = dashboardId !== 'protagon-sao-paulo' && dashboardId !== 'protagon-goiania';
+      const [data, ingressos, cadeiras, sendflowTrafego] = await Promise.all([
+        fetchSupabaseDashboard(dashboardId),
+        hasSales ? fetchCsv(urls.INGRESSOS_CSV_URL) : Promise.resolve([]),
+        hasSales ? fetchCsv(urls.CADEIRAS_CSV_URL) : Promise.resolve([]),
+        urls.SENDFLOW_TRAFEGO_CSV_URL ? fetchCsv(urls.SENDFLOW_TRAFEGO_CSV_URL) : Promise.resolve([]),
+      ]);
+      return {
+        ...data, dashboardId, fetchedAt: new Date().toISOString(), dataSource: 'supabase' as const,
+        main: [], webinario: [],
+        geral: data.geral.filter(row => !isTestOrDummyRow(row)),
+        ingressos: ingressos.filter(row => !isTestOrDummyRow(row)),
+        cadeiras: cadeiras.filter(row => !isTestOrDummyRow(row)),
+        sendflowTrafego,
+      };
+    }
 
     // Extract base URL from CSV_URL to dynamically discover any published tabs
     const matchBase = urls.CSV_URL.match(/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/e\/[^\/]+)/);
@@ -193,20 +227,6 @@ export async function fetchRawDashboardData(dashboardId: DashboardId, forceRefre
     const webinario = (webinarioResults as any[]).flat();
     const sendflowTrafego = (sendflowResults as any[]).flat();
 
-    // Helper to filter out dummy/test rows from sheets
-    const isTestOrDummyRow = (r: any) => {
-      if (!r || typeof r !== 'object') return true;
-      const email = String(r['email'] || r['Email'] || r['E-mail'] || '').trim().toLowerCase();
-      if (email.includes('teste@') || email === 'teste') return true;
-      const name = String(r['nome'] || r['Fn'] || r['Nome'] || r['full_name'] || '').trim().toLowerCase();
-      if (name === 'teste' || name.includes('<test lead:')) return true;
-      const prod = String(r['Produto Comprado'] || r['Produto'] || '').trim().toLowerCase();
-      if (prod === 'teste') return true;
-      const dateVal = String(r['Data Compra'] || r['data_hora'] || r['Data'] || '').trim();
-      if (dateVal.includes('1900') || dateVal.includes('01/01/00')) return true;
-      return false;
-    };
-
     // Clean test records
     let cleanIngressos = (ingressos || []).filter((r: any) => !isTestOrDummyRow(r));
     let cleanCadeiras = (cadeiras || []).filter((r: any) => !isTestOrDummyRow(r));
@@ -220,6 +240,7 @@ export async function fetchRawDashboardData(dashboardId: DashboardId, forceRefre
 
     const result: RawDashboardData = {
       dashboardId,
+      dataSource: 'sheets',
       fetchedAt: new Date().toISOString(),
       main, 
       ingressos: cleanIngressos, 
