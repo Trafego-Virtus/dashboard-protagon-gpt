@@ -35,8 +35,8 @@ essa tabela mantém o histórico de tráfego usado nos cálculos existentes.
   1.000 registros, com até três páginas simultâneas, sem repetir as consultas
   pesadas. O tráfego também usa páginas de até 1.000 registros; limites menores
   da API não truncam os dados. Registros excluídos e de teste são desconsiderados.
-- A preparação publica a nova versão atomicamente. Versões anteriores duram 60
-  minutos para permitir cargas em andamento. Se a versão mais recente tiver mais
+- A preparação publica a nova versão atomicamente. Versões substituídas permanecem
+  disponíveis por 15 minutos, com limite de 60 minutos desde a verificação da fonte. Se a versão mais recente tiver mais
   de 45 minutos, uma nova carga falha explicitamente em vez de mostrar dados obsoletos.
 - Os timestamps dos leads são convertidos para o dia em São Paulo. Os valores
   numéricos de investimento são preservados, assim como a reconciliação por

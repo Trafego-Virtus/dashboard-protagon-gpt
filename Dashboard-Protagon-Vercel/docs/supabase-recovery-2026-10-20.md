@@ -110,9 +110,20 @@ snapshots, respectivamente. A normalização/deduplicação posterior permaneceu
 Esses tempos incluem outras fontes e não representam uma comparação controlada
 com a versão anterior nem uma promessa de desempenho futuro.
 
-A ativação dos jobs e as preparações manuais foram verificadas. Isso não equivale
-a observar um ciclo agendado completo das quatro praças; os próximos resultados
-devem ser consultados em `cron.job_run_details`.
+O primeiro disparo automático também foi observado: Joinville iniciou às
+14h30min00s e terminou com `succeeded` às 14h30min24s. Manteve 24478 registros,
+reutilizou as 25 páginas e não gravou nenhum payload novo. A verificação bem-sucedida
+renovou o horário do snapshot sem duplicar o conteúdo. O ciclo automático completo
+das quatro praças ainda não foi observado; os resultados posteriores ficam em
+`cron.job_run_details`.
+
+## Publicação
+
+O commit `11884dc5db2e0469abaa40dc9252dde97116e2a1` foi integrado à `main`
+e o PR #1 foi marcado como integrado. A Vercel concluiu a publicação às 14h26
+(17h26 UTC). O HTML de produção e o bundle atualizado responderam com HTTP 200;
+o texto de 30 minutos foi confirmado no bundle. A API de Porto Alegre também
+respondeu HTTP 200 após a publicação, com 11790 registros e página de 1000.
 
 ## Pendências externas
 
