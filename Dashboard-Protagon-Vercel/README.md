@@ -30,14 +30,14 @@ essa tabela mantém o histórico de tráfego usado nos cálculos existentes.
   `registro_leads_dedup` nem `registros_leads_dedup`, nem permite informar tabelas
   arbitrárias. As views existentes mantêm suas definições e dependências.
 - `trafego_protagon_revisao` é uma área de revisão de importação e não compõe métricas.
-- Os leads são preparados em segundo plano a cada cinco minutos, somente a partir
+- Os leads são preparados em segundo plano a cada 30 minutos, somente a partir
   das quatro views autorizadas. Cada carga lê uma versão imutável em páginas de
   1.000 registros, com até três páginas simultâneas, sem repetir as consultas
   pesadas. O tráfego também usa páginas de até 1.000 registros; limites menores
   da API não truncam os dados. Registros excluídos e de teste são desconsiderados.
-- A preparação publica a nova versão atomicamente. Versões anteriores duram 15
-  minutos para permitir cargas em andamento. Se a preparação atrasar mais de dez
-  minutos, uma nova carga falha explicitamente em vez de mostrar dados obsoletos.
+- A preparação publica a nova versão atomicamente. Versões anteriores duram 60
+  minutos para permitir cargas em andamento. Se a versão mais recente tiver mais
+  de 45 minutos, uma nova carga falha explicitamente em vez de mostrar dados obsoletos.
 - Os timestamps dos leads são convertidos para o dia em São Paulo. Os valores
   numéricos de investimento são preservados, assim como a reconciliação por
   contato/funil e as regras de MQL existentes.
@@ -76,7 +76,10 @@ Em uma instalação nova, aplique-as antes de ativar a integração. A função 
 A migração `20261019180000_dashboard_lead_snapshots.sql` adiciona duas tabelas de
 leitura com RLS e acesso exclusivo do servidor, uma função de leitura e a rotina
 de preparação. Somente o proprietário do banco pode executar a preparação.
-Os quatro jobs `protagon-snapshot-*` são escalonados para evitar scans simultâneos.
+Os quatro jobs `protagon-snapshot-*` executam a cada 30 minutos, separados por
+cinco minutos (Joinville :00/:30, Porto Alegre :05/:35, Goiânia :10/:40 e São Paulo
+:15/:45). Um bloqueio global impede duas preparações simultâneas, e cada comando
+do cron limita sua consulta a 90 segundos.
 Acompanhe falhas em `cron.job_run_details` e o horário de preparação em
 `dashboard_protagon_snapshots`. A limpeza diária remove somente logs antigos
 pertencentes a esses jobs. Nenhuma tabela ou permissão de origem foi alterada.
@@ -85,8 +88,19 @@ O fluxo é: views autorizadas → preparação automática → `/api/supabase` �
 → filtros de período → cálculos → componentes. A tela mostra a data/hora de
 origem dos leads. O botão Atualizar Dados e a reconsulta a cada cinco minutos
 buscam a versão preparada mais recente; não forçam um processamento completo.
-Há um atraso de até cerca de cinco minutos mais o tempo de preparação em relação
+Há um atraso de até cerca de 30 minutos mais o tempo de preparação em relação
 às views. A importação que alimenta o Supabase continua no processo existente.
+
+**Estado em 20/10/2026: correção preparada, ainda não aplicada ao banco.** Os quatro
+jobs foram pausados durante a recuperação. Os limites ainda ativos no banco são
+10 minutos para novas cargas e 15 minutos para páginas em andamento. O restante
+desta seção descreve o comportamento esperado após a aplicação da operação.
+
+A operação `supabase/operations/recover_snapshot_refresh.sql` alinha a validade
+à frequência de 30 minutos e adiciona o bloqueio global. Ela preserva o estado
+ativo/inativo dos jobs: durante uma recuperação, pause os quatro jobs antes de
+aplicá-la, confirme a saúde do banco e reative-os somente depois da validação.
+Essa operação não importa leads e não altera as fontes de dados.
 
 ### Interrupções de conexão
 

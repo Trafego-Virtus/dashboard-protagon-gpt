@@ -454,10 +454,10 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
             )}
             {rawData?.leadsUpdatedAt && (
               <span className="text-[10px] sm:text-xs text-zinc-400"
-                title="Os leads são atualizados automaticamente a cada 5 minutos.">
+                title="Os leads são atualizados automaticamente a cada 30 minutos.">
                 Leads até {new Date(rawData.leadsUpdatedAt).toLocaleString('pt-BR', {
                   timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                })} · a cada 5 min
+                })} · a cada 30 min
               </span>
             )}
             <button 
