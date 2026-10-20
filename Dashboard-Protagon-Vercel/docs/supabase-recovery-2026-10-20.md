@@ -8,7 +8,8 @@ anteriores nela descritos não representam a configuração após esta recupera�
 
 O usuário autorizou as correções e forneceu os dois workflows ativos, mas não
 autorizou acesso ao PostgreSQL interno. Nenhuma consulta foi feita nessa origem.
-O backup de importação foi preservado. Não foram alterados os importadores do n8n,
+O backup foi inicialmente preservado e depois removido com autorização específica
+(ver seção de remoção abaixo). Não foram alterados os importadores do n8n,
 as views de classificação, a tabela de leads excluída do escopo ou suas permissões.
 
 A pausa dos quatro jobs havia sido feita neste chat para conter as consultas
@@ -55,7 +56,8 @@ A consulta interna, execução e recomposição do PostgreSQL oficial não foram
 
 A melhoria reduz regravações, mas não elimina a leitura/classificação completa da
 origem. Não foi adotado incremental por data/ID sem cobertura comprovada de edições
-ou exclusões. Não foi executado `VACUUM FULL`, reinício do banco ou exclusão do backup.
+ou exclusões. Não foi executado `VACUUM FULL` nem reinício do banco. A remoção
+posterior e autorizada do backup está registrada abaixo.
 
 ## Medições na recuperação manual
 
@@ -113,8 +115,9 @@ com a versão anterior nem uma promessa de desempenho futuro.
 O primeiro disparo automático também foi observado: Joinville iniciou às
 14h30min00s e terminou com `succeeded` às 14h30min24s. Manteve 24478 registros,
 reutilizou as 25 páginas e não gravou nenhum payload novo. A verificação bem-sucedida
-renovou o horário do snapshot sem duplicar o conteúdo. O ciclo automático completo
-das quatro praças ainda não foi observado; os resultados posteriores ficam em
+renovou o horário do snapshot sem duplicar o conteúdo. Na conferência posterior,
+às 15h06, as últimas execuções automáticas das quatro praças estavam com
+`succeeded`, mantendo os horários combinados. Os resultados ficam em
 `cron.job_run_details`.
 
 ## Publicação
@@ -125,14 +128,48 @@ e o PR #1 foi marcado como integrado. A Vercel concluiu a publicação às 14h26
 o texto de 30 minutos foi confirmado no bundle. A API de Porto Alegre também
 respondeu HTTP 200 após a publicação, com 11790 registros e página de 1000.
 
-## Pendências externas
+## Remoção autorizada do backup — 15h06 de Brasília
 
-A causa original da criação do backup permanece uma hipótese de preservação para
-retorno após a importação. Não foram encontradas dependências do dashboard nem
-referências catalogadas externas à própria tabela. Sem reconciliar sua recomposição
-pela fonte oficial, não foi comprovada a condição exigida para removê-lo. Essa
-validação pode ser feita pelo responsável interno, sem conceder acesso ao agente.
+O usuário confirmou que o PostgreSQL interno é a fonte oficial e permite gerar
+novamente os dados, e autorizou expressamente remover o backup do Supabase para
+liberar espaço. A decisão se baseou nessa confirmação; o agente não acessou nem
+executou uma restauração no banco interno.
 
-A redução do espaço ocupado e a recuperação sustentada de memória/I/O devem ser
-acompanhadas separadamente. As verificações atuais não comprovam a recuperação do
-Disk IO Budget nem eliminam a limitação de espaço do plano Free.
+Antes da exclusão, a conferência do catálogo encontrou apenas o tipo composto e
+TOAST pertencentes à própria tabela, sem referências em funções, jobs ou publicações.
+A operação removeu exclusivamente
+`import_leads_20261019.registros_leads_backup_20261019`, com `DROP TABLE ... RESTRICT`,
+sem `CASCADE`. O schema de importação foi mantido.
+
+Migração aplicada: `20261020180625_remove_obsolete_leads_backup_20261019`.
+SQL registrado em `supabase/operations/remove_obsolete_leads_backup.sql`.
+
+| Medida | Antes | Depois |
+| --- | ---: | ---: |
+| Tamanho do backup | 192.512.000 bytes | Tabela inexistente |
+| Banco `postgres` | 508.368.563 bytes | 302.872.243 bytes |
+| Todos os bancos do projeto | 523.483.857 bytes | 317.987.537 bytes |
+
+As medições do projeto passaram de aproximadamente 523,5 MB para 318,0 MB,
+abaixo da referência de 500 MB do plano. A diferença total também incorpora
+variações concorrentes do banco durante o intervalo; o objeto excluído ocupava
+192,5 MB. Não se atribui toda a diferença exclusivamente a esse `DROP TABLE`.
+
+A consulta posterior confirmou a ausência da tabela antiga, a migração registrada
+e a preservação da identidade física da tabela de leads atual (mesmos OID e
+relfilenode). Nenhuma exclusão, truncamento, substituição ou recarga dos leads atuais
+foi executada. Views, funções de leitura/preparação e importadores foram preservados.
+
+Os quatro jobs continuaram ativos e suas últimas execuções registraram `succeeded`
+(Joinville 15h00, Porto Alegre 15h05, Goiânia 14h40 e São Paulo 14h45). Depois da
+remoção, a API de produção retornou HTTP 200 para Goiânia, com 5319 registros totais
+e 1000 registros na primeira página.
+
+## Limites da verificação
+
+A finalidade original de criação do backup continua sendo uma hipótese de retorno
+após a importação. A confirmação de reconstrução veio do responsável pelo ambiente;
+não foi feita uma auditoria do PostgreSQL interno nem de consumidores externos.
+
+A redução de espaço foi medida no banco. Isso não demonstra, por si só, recuperação
+do Disk IO Budget ou resolução definitiva de toda pressão de memória/I/O.

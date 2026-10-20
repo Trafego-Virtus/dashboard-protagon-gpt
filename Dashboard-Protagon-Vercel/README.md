@@ -114,7 +114,8 @@ limpar payloads apenas pela idade: conteúdo antigo pode continuar sendo utiliza
 A leitura/classificação da origem ainda é completa. Não há marcador confiável
 para sincronização incremental de inclusões, alterações e exclusões na automação
 atual. Nenhum índice, trigger ou registro da tabela de origem foi alterado.
-O backup de importação permanece preservado até comprovar sua reconstrução.
+O backup antigo de importação foi removido em 20/10/2026, após autorização explícita
+e confirmação do usuário de que os dados podem ser recompostos pelo PostgreSQL oficial.
 Consulte o [registro da recuperação](docs/supabase-recovery-2026-10-20.md) e a
 [auditoria anterior](docs/supabase-audit-2026-10-20.md).
 
