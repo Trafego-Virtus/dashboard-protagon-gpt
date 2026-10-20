@@ -101,6 +101,9 @@ A operação `supabase/operations/recover_snapshot_refresh.sql` alinha a validad
 ativo/inativo dos jobs: durante uma recuperação, pause os quatro jobs antes de
 aplicá-la, confirme a saúde do banco e reative-os somente depois da validação.
 Essa operação não importa leads e não altera as fontes de dados.
+Ela ainda reconstrói e regrava snapshots completos; não é uma solução definitiva
+para o consumo de I/O. Consulte a [auditoria de 20/10/2026](docs/supabase-audit-2026-10-20.md)
+antes de aplicá-la ou reativar os jobs. O PR permanece rascunho.
 
 ### Interrupções de conexão
 

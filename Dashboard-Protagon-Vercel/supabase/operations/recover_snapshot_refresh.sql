@@ -1,3 +1,6 @@
+-- DRAFT ONLY: not applied or approved. See docs/supabase-audit-2026-10-20.md.
+-- This fixes cadence/validity but still fully rebuilds and rewrites snapshots.
+-- Review the I/O reduction design before resuming production refresh jobs.
 -- Recovery configuration. Apply while the four refresh jobs are paused.
 -- Keep existing job activation state; resume only after checking database health.
 create or replace function public.dashboard_protagon_refresh_snapshot(p_city text)
