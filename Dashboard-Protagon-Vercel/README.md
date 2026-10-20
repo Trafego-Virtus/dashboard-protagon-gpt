@@ -91,19 +91,39 @@ buscam a versão preparada mais recente; não forçam um processamento completo.
 Há um atraso de até cerca de 30 minutos mais o tempo de preparação em relação
 às views. A importação que alimenta o Supabase continua no processo existente.
 
-**Estado em 20/10/2026: correção preparada, ainda não aplicada ao banco.** Os quatro
-jobs foram pausados durante a recuperação. Os limites ainda ativos no banco são
-10 minutos para novas cargas e 15 minutos para páginas em andamento. O restante
-desta seção descreve o comportamento esperado após a aplicação da operação.
+**Correção aplicada em 20/10/2026:** a operação
+`supabase/operations/recover_snapshot_refresh.sql` foi registrada no Supabase
+como `20261020171839_dashboard_snapshot_page_reuse_30min`. Em uma instalação nova,
+aplique essa operação uma única vez depois das migrações de 19/10, com os jobs
+pausados. Ela deixa os jobs pausados até a validação; a retomada operacional vem
+após preparar e conferir as quatro praças.
 
-A operação `supabase/operations/recover_snapshot_refresh.sql` alinha a validade
-à frequência de 30 minutos e adiciona o bloqueio global. Ela preserva o estado
-ativo/inativo dos jobs: durante uma recuperação, pause os quatro jobs antes de
-aplicá-la, confirme a saúde do banco e reative-os somente depois da validação.
-Essa operação não importa leads e não altera as fontes de dados.
-Ela ainda reconstrói e regrava snapshots completos; não é uma solução definitiva
-para o consumo de I/O. Consulte a [auditoria de 20/10/2026](docs/supabase-audit-2026-10-20.md)
-antes de aplicá-la ou reativar os jobs. O PR permanece rascunho.
+A tabela `dashboard_protagon_snapshot_manifest` associa cada geração às páginas
+imutáveis de conteúdo. A preparação compara os 27 campos de cada página, grava
+somente páginas diferentes e publica o conjunto completo em uma transação.
+Páginas iguais são compartilhadas entre gerações; contagem ou maior ID não são
+usados como prova de igualdade. Cada verificação bem-sucedida tem seu próprio
+horário, mesmo quando reutiliza conteúdo antigo. Erros não renovam a validade.
+
+Novas cargas exigem uma verificação nos últimos 45 minutos. A versão fixada por
+uma leitura tem limite de 60 minutos e, depois de substituída, permanece disponível
+por mais 15 minutos, respeitado esse limite. A limpeza nas preparações seguintes
+remove manifestos expirados e somente os payloads sem referências. Não é seguro
+limpar payloads apenas pela idade: conteúdo antigo pode continuar sendo utilizado.
+
+A leitura/classificação da origem ainda é completa. Não há marcador confiável
+para sincronização incremental de inclusões, alterações e exclusões na automação
+atual. Nenhum índice, trigger ou registro da tabela de origem foi alterado.
+O backup de importação permanece preservado até comprovar sua reconstrução.
+Consulte o [registro da recuperação](docs/supabase-recovery-2026-10-20.md) e a
+[auditoria anterior](docs/supabase-audit-2026-10-20.md).
+
+Os testes SQL usam fontes fictícias e objetos temporários, sem acessar os leads
+reais. Para executá-los em uma conexão PostgreSQL de teste:
+
+```sh
+node scripts/build-snapshot-verification.mjs | psql --single-transaction --set=ON_ERROR_STOP=1
+```
 
 ### Interrupções de conexão
 

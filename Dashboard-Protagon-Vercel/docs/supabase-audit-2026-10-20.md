@@ -1,5 +1,8 @@
 # Auditoria do Supabase — 20/10/2026
 
+**Registro histórico anterior às correções.** O estado posterior, as automações
+ativas e as mudanças autorizadas estão no [registro da recuperação](supabase-recovery-2026-10-20.md).
+
 Projeto: `oogehvamgxiagmfgejpu` — Dashboard Tráfego / Time de Tráfego.
 Verificações entre 13h34 e 13h40 de Brasília. Esta revisão não executou DDL,
 exclusões, atualizações de dados, reinicialização nem ativação de jobs.
