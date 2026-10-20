@@ -24,6 +24,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { ptBR } from 'date-fns/locale/pt-BR';
 registerLocale('pt-BR', ptBR);
 
+import { DashboardRefreshNotice } from './DashboardRefreshNotice';
 import { MetricCard } from './MetricCard';
 import { TicketTypeMetrics, MiniTicketTypeMetrics } from './TicketTypeMetrics';
 import { CreativesTable } from './CreativesTable';
@@ -202,9 +203,10 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
     const loadData = async () => {
       try {
         setLoading(true);
-        setError(null);
         // Only clear metrics if it's a completely new dashboard load
-        if (!rawData) {
+        if (rawData?.dashboardId !== dashboardId) {
+          setRawData(null);
+          setError(null);
           setMetrics(null);
           setPrevMetrics(null);
         }
@@ -213,6 +215,7 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
         if (ignore) return;
         
         setRawData(data);
+        setError(null);
         
       } catch (err: any) {
         if (!ignore) {
@@ -283,12 +286,14 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
       <div className="flex-1 flex flex-col items-center justify-center bg-zinc-950 text-white min-h-screen">
         <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-4" />
         <h2 className="text-xl font-medium tracking-tight">Carregando dados...</h2>
-        <p className="text-sm text-zinc-500 mt-2">Por favor aguarde, processando milhões de linhas...</p>
+        <p className="text-sm text-zinc-500 mt-2">Buscando os dados da praça. Aguarde um momento.</p>
       </div>
     );
   }
 
-  if (error) {
+  const hasCurrentData = Boolean(metrics && rawData?.dashboardId === dashboardId);
+
+  if (error && !hasCurrentData) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-zinc-950 text-white min-h-screen">
         <div className="bg-red-500/10 text-red-500 p-4 rounded-md mb-4 border border-red-500/20">
@@ -302,7 +307,7 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
     );
   }
 
-  if (!metrics) {
+  if (!hasCurrentData) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-zinc-950 text-white min-h-screen">
         <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-4" />
@@ -338,7 +343,7 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-zinc-950 text-white relative">
-      {(loading || isCalculating) && (
+      {isCalculating && (
         <div className="absolute inset-0 z-50 bg-zinc-950/50 backdrop-blur-sm flex flex-col items-center justify-center">
           <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-4" />
           <h2 className="text-xl font-medium tracking-tight text-white">Calculando...</h2>
@@ -456,7 +461,8 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
               </span>
             )}
             <button 
-              onClick={() => setRefreshKey(k => k + 1)} 
+              onClick={() => setRefreshKey(k => k + 1)}
+              disabled={loading}
               className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap"
               title="Buscar os dados mais recentes disponíveis"
             >
@@ -466,6 +472,11 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
           </div>
         </div>
       </header>
+
+      {error && hasCurrentData && (
+        <DashboardRefreshNotice error={error} fetchedAt={rawData?.fetchedAt} loading={loading}
+          onRetry={() => setRefreshKey(k => k + 1)} />
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden w-full mx-auto relative">

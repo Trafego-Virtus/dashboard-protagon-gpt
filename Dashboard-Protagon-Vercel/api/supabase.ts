@@ -98,14 +98,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       if (isPrepared && error.code === 'P0001') {
-        send(503, { code: 'STALE_SNAPSHOT', error: 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.' });
+        send(503, { code: 'STALE_SNAPSHOT', retryable: false, error: 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.' });
         return;
       }
       const code = error.code === '57014' ? 'SOURCE_TIMEOUT'
-        : response.status === 401 || response.status === 403 ? 'SOURCE_ACCESS_DENIED' : 'SOURCE_QUERY_FAILED';
-      send(502, { code, error: code === 'SOURCE_TIMEOUT'
-        ? 'A consulta dos leads excedeu o tempo disponível. Tente atualizar novamente.'
-        : 'Não foi possível atualizar os dados do Supabase. Confira a configuração do servidor e tente novamente.' });
+        : response.status === 401 || response.status === 403 ? 'SOURCE_ACCESS_DENIED'
+        : response.status === 429 || response.status >= 500 || ['PGRST000', 'PGRST001', 'PGRST002'].includes(error.code)
+          ? 'SOURCE_UNAVAILABLE' : 'SOURCE_QUERY_FAILED';
+      const retryable = code === 'SOURCE_TIMEOUT' || code === 'SOURCE_UNAVAILABLE';
+      if (retryable) res.setHeader('Retry-After', '3');
+      send(retryable ? (code === 'SOURCE_TIMEOUT' ? 504 : 503) : 502, { code, retryable,
+        error: retryable ? 'O Supabase está temporariamente indisponível. Tente novamente em alguns minutos.'
+          : 'Não foi possível consultar a fonte de dados. Verifique a conexão do servidor com o Supabase.' });
       return;
     }
     if (isRpc) { send(200, await response.json()); return; }
@@ -114,8 +118,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // Advance by the actual number returned, even if the project's API cap is
     // below the requested page size. A final empty page avoids truncation.
     send(200, { rows, nextOffset: rows.length ? offset + rows.length : null });
-  } catch {
+  } catch (error) {
     // Do not log upstream bodies, credentials or lead records.
-    send(502, { error: 'Não foi possível atualizar os dados do Supabase. Confira a configuração do servidor e tente novamente.' });
+    const timeout = error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name);
+    res.setHeader('Retry-After', '3');
+    send(timeout ? 504 : 503, { code: timeout ? 'SOURCE_TIMEOUT' : 'SOURCE_UNAVAILABLE', retryable: true,
+      error: 'O Supabase está temporariamente indisponível. Tente novamente em alguns minutos.' });
   }
 }

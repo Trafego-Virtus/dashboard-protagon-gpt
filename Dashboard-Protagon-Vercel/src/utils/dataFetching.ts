@@ -91,12 +91,13 @@ export async function fetchRawDashboardData(dashboardId: DashboardId, forceRefre
 
     if (await usesSupabase(dashboardId, forceRefresh)) {
       const hasSales = dashboardId !== 'protagon-sao-paulo' && dashboardId !== 'protagon-goiania';
+      const controller = new AbortController();
       const [data, ingressos, cadeiras, sendflowTrafego] = await Promise.all([
-        fetchSupabaseDashboard(dashboardId),
+        fetchSupabaseDashboard(dashboardId, controller.signal),
         hasSales ? fetchCsv(urls.INGRESSOS_CSV_URL) : Promise.resolve([]),
         hasSales ? fetchCsv(urls.CADEIRAS_CSV_URL) : Promise.resolve([]),
         urls.SENDFLOW_TRAFEGO_CSV_URL ? fetchCsv(urls.SENDFLOW_TRAFEGO_CSV_URL) : Promise.resolve([]),
-      ]);
+      ]).catch(error => { controller.abort(); throw error; });
       return {
         ...data, dashboardId, fetchedAt: new Date().toISOString(), dataSource: 'supabase' as const,
         main: [], webinario: [],

@@ -254,7 +254,7 @@ test('bounds use only the fixed read-only RPC and timeout responses contain no u
     assert.deepEqual((await request('?city=protagon-sao-paulo&dataset=geral&bounds=1')).data, { minId: '21486', maxId: '154000' });
     globalThis.fetch = (async () => Response.json({ code: '57014', message: 'sensitive query details' }, { status: 500 })) as typeof fetch;
     const response = await request('?city=protagon-sao-paulo&dataset=geral&from=0&to=4999');
-    assert.equal(response.statusCode, 502);
+    assert.equal(response.statusCode, 504);
     assert.equal(response.data.code, 'SOURCE_TIMEOUT');
     assert.ok(!JSON.stringify(response.data).includes('sensitive'));
   } finally { globalThis.fetch = original; }
@@ -280,3 +280,22 @@ test('campaign picker reads Supabase traffic and compares ISO dates when a campa
     assert.deepEqual(campaigns.map(campaign => campaign.nome), ['Campanha ativa']);
   } finally { globalThis.fetch = original; }
 });
+
+
+test('database connection failures return a retryable outage without upstream details', async () => withServerKey(async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => Response.json({ code: 'PGRST002', message: 'private database details' }, { status: 503 })) as typeof fetch;
+    const response = await request('?city=protagon-porto-alegre&dataset=met');
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.data.code, 'SOURCE_UNAVAILABLE');
+    assert.equal(response.data.retryable, true);
+    assert.ok(!JSON.stringify(response.data).includes('private'));
+    globalThis.fetch = (async () => { throw new DOMException('private timeout details', 'TimeoutError'); }) as typeof fetch;
+    const timedOut = await request('?city=protagon-porto-alegre&dataset=met');
+    assert.equal(timedOut.statusCode, 504);
+    assert.equal(timedOut.data.code, 'SOURCE_TIMEOUT');
+    assert.equal(timedOut.data.retryable, true);
+    assert.ok(!JSON.stringify(timedOut.data).includes('private'));
+  } finally { globalThis.fetch = original; }
+}));

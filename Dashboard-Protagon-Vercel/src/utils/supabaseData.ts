@@ -1,3 +1,4 @@
+import { requestSupabaseJson } from './supabaseRequest';
 import { normalizeLead } from './leadData';
 import type { DashboardId } from './dashboardSources';
 import { hasSupabaseSource, SUPABASE_DATASETS, type SupabaseDataset } from './supabaseSources';
@@ -8,9 +9,7 @@ export async function usesSupabase(city: DashboardId, forceRefresh = false): Pro
   if (!hasSupabaseSource(city)) return false;
   if (!forceRefresh && configCache && configCache.expires > Date.now()) return configCache.promise;
   const promise = (async () => {
-    const response = await fetch('/api/supabase?config=1', { cache: 'no-store' });
-    if (!response.ok) throw new Error('Não foi possível conferir a fonte de dados do dashboard.');
-    const result = await response.json();
+    const result = await requestSupabaseJson('/api/supabase?config=1', 'a configuração do dashboard');
     if (typeof result.enabled !== 'boolean') throw new Error('Configuração da fonte de dados inválida.');
     return result.enabled;
   })();
@@ -24,25 +23,23 @@ export async function usesSupabase(city: DashboardId, forceRefresh = false): Pro
 async function mapConcurrent<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const result: R[] = new Array(items.length);
   let next = 0;
+  let failed = false;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (!failed && next < items.length) {
       const index = next++;
-      result[index] = await fn(items[index]);
+      try { result[index] = await fn(items[index]); }
+      catch (error) { failed = true; throw error; }
     }
   }));
   return result;
 }
 
-export async function fetchSupabaseLeadSnapshot(city: DashboardId) {
+export async function fetchSupabaseLeadSnapshot(city: DashboardId, signal?: AbortSignal) {
   if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
   const readPage = async (page: number, version?: string) => {
     const params = new URLSearchParams({ city, dataset: 'geral', prepared: '1', page: String(page) });
     if (version) params.set('version', version);
-    const response = await fetch(`/api/supabase?${params}`, { cache: 'no-store' });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.code === 'STALE_SNAPSHOT'
-      ? 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.'
-      : 'Não foi possível atualizar os leads no Supabase. Tente novamente.');
+    const data = await requestSupabaseJson(`/api/supabase?${params}`, 'os leads da praça', signal);
     if (!Array.isArray(data.rows) || data.page !== page || data.pageSize !== 1000
       || !Number.isSafeInteger(data.totalRows) || data.totalRows < 0 || data.totalRows > 1_000_000
       || typeof data.snapshot !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.snapshot)
@@ -65,19 +62,20 @@ export async function fetchSupabaseLeadSnapshot(city: DashboardId) {
   return { rows: first.rows.concat(...pages), sourceUpdatedAt: first.sourceUpdatedAt };
 }
 
-export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
+export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset, signal?: AbortSignal): Promise<Row[]> {
   if (!hasSupabaseSource(city)) throw new Error('Praça sem fonte Supabase configurada.');
-  return dataset === 'geral' ? (await fetchSupabaseLeadSnapshot(city)).rows : fetchPages(city, dataset);
+  return dataset === 'geral' ? (await fetchSupabaseLeadSnapshot(city, signal)).rows : fetchPages(city, dataset, signal);
 }
 
-async function fetchPages(city: DashboardId, dataset: SupabaseDataset): Promise<Row[]> {
+async function fetchPages(city: DashboardId, dataset: SupabaseDataset, signal?: AbortSignal): Promise<Row[]> {
   const rows: Row[] = [];
   let offset = 0;
   while (offset <= 1_000_000) {
     const params = new URLSearchParams({ city, dataset, offset: String(offset) });
-    const response = await fetch(`/api/supabase?${params}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Não foi possível atualizar ${dataset} no Supabase. Tente novamente.`);
-    const page = await response.json();
+    const labels: Record<SupabaseDataset, string> = { geral: 'os leads', met: 'o tráfego do Meteórico',
+      vd: 'o tráfego de Venda Direta', gd: 'o tráfego de Geração de Demanda',
+      dc: 'a Distribuição de Conteúdo', dcCorredor: 'a Distribuição de Conteúdo', workshop: 'o histórico de tráfego do webinário' };
+    const page = await requestSupabaseJson(`/api/supabase?${params}`, labels[dataset], signal);
     if (!Array.isArray(page.rows)) throw new Error('O Supabase retornou dados inválidos.');
     rows.push(...page.rows);
     if (page.nextOffset === null) return rows;
@@ -141,15 +139,19 @@ export function normalizeSupabaseDashboard(datasets: Record<SupabaseDataset, Row
     .map(row => normalizeSupabaseLead(row, campaignFunnels)) };
 }
 
-export async function fetchSupabaseDashboard(city: DashboardId) {
+export async function fetchSupabaseDashboard(city: DashboardId, parentSignal?: AbortSignal) {
+  const controller = new AbortController();
+  const signal = parentSignal ? AbortSignal.any([controller.signal, parentSignal]) : controller.signal;
   const datasets = {} as Record<SupabaseDataset, Row[]>;
   let leadsUpdatedAt: string | undefined;
-  await mapConcurrent(SUPABASE_DATASETS, 3, async dataset => {
-    if (dataset === 'geral') {
-      const snapshot = await fetchSupabaseLeadSnapshot(city);
-      datasets.geral = snapshot.rows;
-      leadsUpdatedAt = snapshot.sourceUpdatedAt;
-    } else datasets[dataset] = await fetchSupabaseRows(city, dataset);
-  });
+  try {
+    await mapConcurrent(SUPABASE_DATASETS, 3, async dataset => {
+      if (dataset === 'geral') {
+        const snapshot = await fetchSupabaseLeadSnapshot(city, signal);
+        datasets.geral = snapshot.rows;
+        leadsUpdatedAt = snapshot.sourceUpdatedAt;
+      } else datasets[dataset] = await fetchSupabaseRows(city, dataset, signal);
+    });
+  } catch (error) { controller.abort(); throw error; }
   return { ...normalizeSupabaseDashboard(datasets), leadsUpdatedAt };
 }

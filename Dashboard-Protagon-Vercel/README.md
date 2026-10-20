@@ -88,6 +88,20 @@ buscam a versão preparada mais recente; não forçam um processamento completo.
 Há um atraso de até cerca de cinco minutos mais o tempo de preparação em relação
 às views. A importação que alimenta o Supabase continua no processo existente.
 
+### Interrupções de conexão
+
+O cliente limita as requisições Supabase a três simultâneas no total. Falhas
+transitórias de rede, 429 e 5xx admitem uma única nova tentativa na mesma página.
+Permissões, resposta inválida e snapshot atrasado não são repetidos. Uma falha
+encerra as demais leituras da mesma carga para evitar consultas desnecessárias.
+
+Se uma atualização falhar depois de uma carga concluída, os indicadores da mesma
+praça permanecem disponíveis, com aviso explícito e horário da última leitura.
+A primeira carga continua exigindo uma resposta válida; indisponibilidade do banco
+não vira zero nem provoca troca silenciosa de fonte. Nenhum dado pessoal é gravado
+em localStorage. Na primeira carga, uma indisponibilidade prolongada ainda impede
+o acesso e precisa ser resolvida na infraestrutura do Supabase.
+
 ## Fontes anteriores de leads — Google Sheets
 
 As quatro URLs publicadas enviadas pelo usuário já estavam no ZIP. O problema
