@@ -1,0 +1,299 @@
+{
+  "name": "Protagon | Trafego Sheets → Supabase | Sequencial",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Importação sequencial\nSelecione as credenciais Google Sheets e Supabase nos dois nós HTTP.\nDesative o fluxo anterior antes de ativar este. Não execute ambos.\nCada lote aguarda a confirmação do Supabase e uma pausa de 1 segundo antes do próximo.\nMantém a execução horária, inserção de novos e atualização de hoje/ontem, com as mesmas regras.",
+        "height": 1500,
+        "width": 860,
+        "color": 4
+      },
+      "id": "292023b0-895d-4c26-a9b3-f452e55a996e",
+      "name": "Instrucoes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -864,
+        1984
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "afdc7e0f-708c-4e18-9428-1ad6c08a6eed",
+      "name": "Testar agora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "e2edb9b4-2c7a-4c4b-911e-a3ab755f1d0b",
+      "name": "A cada hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        2576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fontes verificadas. GD e GD-V2 alimentam a mesma tabela da praca.\nconst fontes = [{\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_DC\", \"gid\": 1851196590, \"rowCount\": 17018, \"colCount\": 31, \"city\": \"sao_paulo\", \"action\": \"DC\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_DC_corredor-polones\", \"gid\": 1849177440, \"rowCount\": 17018, \"colCount\": 31, \"city\": \"sao_paulo\", \"action\": \"DC_corredor-polones\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_MET\", \"gid\": 1934788815, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"sao_paulo\", \"action\": \"MET\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_Workshop\", \"gid\": 178716734, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"sao_paulo\", \"action\": \"Workshop\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_VD\", \"gid\": 1789500228, \"rowCount\": 1000, \"colCount\": 29, \"city\": \"sao_paulo\", \"action\": \"VD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1uFfo6gnBkMGbpNe7SYME3ZyDugcDymPWHWtWGrX9E_c\", \"title\": \"PRO-039-SP\", \"tab\": \"MetaAds_Dados_Performance_GD\", \"gid\": 27909521, \"rowCount\": 4148, \"colCount\": 28, \"city\": \"sao_paulo\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_DC\", \"gid\": 1851196590, \"rowCount\": 17017, \"colCount\": 30, \"city\": \"joinville\", \"action\": \"DC\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_DC_corredor-polones\", \"gid\": 1996028694, \"rowCount\": 17017, \"colCount\": 30, \"city\": \"joinville\", \"action\": \"DC_corredor-polones\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_MET\", \"gid\": 1934788815, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"joinville\", \"action\": \"MET\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_Workshop\", \"gid\": 765125540, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"joinville\", \"action\": \"Workshop\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_VD\", \"gid\": 1789500228, \"rowCount\": 1000, \"colCount\": 29, \"city\": \"joinville\", \"action\": \"VD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_GD\", \"gid\": 27909521, \"rowCount\": 4443, \"colCount\": 28, \"city\": \"joinville\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}, {\"id\": \"1XWEmQ4WZ13foRdJEo1TDhm09ivDWc96dE7Bw291gKss\", \"title\": \"PRO-JV-035\", \"tab\": \"MetaAds_Dados_Performance_GD-V2\", \"gid\": 736292789, \"rowCount\": 4064, \"colCount\": 28, \"city\": \"joinville\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_DC\", \"gid\": 1851196590, \"rowCount\": 17017, \"colCount\": 30, \"city\": \"porto_alegre\", \"action\": \"DC\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_DC_corredor-polones\", \"gid\": 1920239724, \"rowCount\": 17017, \"colCount\": 30, \"city\": \"porto_alegre\", \"action\": \"DC_corredor-polones\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_MET\", \"gid\": 1934788815, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"porto_alegre\", \"action\": \"MET\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_Workshop\", \"gid\": 1746462402, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"porto_alegre\", \"action\": \"Workshop\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_VD\", \"gid\": 1789500228, \"rowCount\": 1000, \"colCount\": 29, \"city\": \"porto_alegre\", \"action\": \"VD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_GD\", \"gid\": 27909521, \"rowCount\": 3734, \"colCount\": 29, \"city\": \"porto_alegre\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}, {\"id\": \"1A6oLB9koBaP8uJYk7PVNqkXhezuqfgbSGoki5yPAioE\", \"title\": \"PRO-POA-037\", \"tab\": \"MetaAds_Dados_Performance_GD-V2\", \"gid\": 1445243482, \"rowCount\": 3575, \"colCount\": 29, \"city\": \"porto_alegre\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_DC\", \"gid\": 1851196590, \"rowCount\": 17018, \"colCount\": 31, \"city\": \"goiania\", \"action\": \"DC\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_DC_corredor-polones\", \"gid\": 2002402538, \"rowCount\": 17018, \"colCount\": 31, \"city\": \"goiania\", \"action\": \"DC_corredor-polones\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Alcance\", \"Cliques\", \"Visitas ao Perfil\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"View 95%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Atribuição\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_MET\", \"gid\": 1934788815, \"rowCount\": 2420, \"colCount\": 28, \"city\": \"goiania\", \"action\": \"MET\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_Workshop\", \"gid\": 1468911344, \"rowCount\": 2420, \"colCount\": 29, \"city\": \"goiania\", \"action\": \"Workshop\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_VD\", \"gid\": 1789500228, \"rowCount\": 1000, \"colCount\": 29, \"city\": \"goiania\", \"action\": \"VD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\"]}, {\"id\": \"1yeWayIgrkCygOZoWHbF9PIHio6eZiCWwzyIQI_klm1c\", \"title\": \"PRO-E038-GOI\", \"tab\": \"MetaAds_Dados_Performance_GD\", \"gid\": 27909521, \"rowCount\": 4148, \"colCount\": 28, \"city\": \"goiania\", \"action\": \"GD\", \"headers\": [\"Data\", \"Valor Gasto\", \"Impressões\", \"Cliques\", \"Page Views\", \"Checkouts\", \"Thruplays\", \"View 3s\", \"View 25%\", \"View 50%\", \"View 75%\", \"NOME DA CAMPANHA\", \"ID CAMPANHA\", \"STATUS CAMPANHA\", \"NOME DO CONJUNTO\", \"ID CONJUNTO\", \"STATUS CONJUNTO\", \"NOME DO ANÚNCIO\", \"ID ANÚNCIO\", \"STATUS ANÚNCIO\", \"Creative Instagram Permalink\", \"Creative Thumbnail\", \"Alcance\", \"Subfunil\"]}];\nreturn fontes.map(f=>({json:f}));\n"
+      },
+      "id": "0818221b-43b2-4ed0-9c95-bd8bc87fc554",
+      "name": "Configurar fontes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + $json.id + '/values/' + encodeURIComponent(\"'\" + $json.tab.replace(/'/g, \"''\") + \"'\") }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "valueRenderOption",
+              "value": "UNFORMATTED_VALUE"
+            },
+            {
+              "name": "dateTimeRenderOption",
+              "value": "SERIAL_NUMBER"
+            },
+            {
+              "name": "majorDimension",
+              "value": "ROWS"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "99f72841-512a-4bbc-923d-b6af21929bbb",
+      "name": "Ler abas do Google Sheets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalizeTraffic(sources, config) {\n  const normalizeText = v => String(v ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();\n  const actionSlug = a => ({DC:'dc','DC_corredor-polones':'dc_corredor_polones',MET:'met',VD:'vd',GD:'gd',Workshop:'workshop'}[a]);\n  const specs = new Map();\n  for (const c of config) {\n    const table = 'trafego_protagon_' + c.city + '_' + actionSlug(c.action);\n    if (!actionSlug(c.action)) throw new Error('Estrategia desconhecida: ' + c.action);\n    if (specs.has(table) && JSON.stringify(specs.get(table)) !== JSON.stringify(c.headers)) throw new Error('Colunas diferentes para ' + table);\n    specs.set(table, c.headers);\n  }\n  const numericHeaders = new Set(['Valor Gasto','Impressões','Alcance','Cliques','Visitas ao Perfil','Page Views','Checkouts','Thruplays','View 3s','View 25%','View 50%','View 75%','View 95%']);\n  const idHeaders = ['ID CAMPANHA','ID CONJUNTO','ID ANÚNCIO'];\n  const byTable = new Map([...specs.keys()].map(t=>[t,new Map()]));\n  const review = [];\n  const summary = {linhas_lidas:0,duplicadas_na_origem:0,duplicadas_com_divergencia:0,linhas_em_revisao:0,linhas_preparadas:0,tabelas:{}};\n  function parseDate(v) {\n    if (typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= 36526 && v <= 109574) return new Date(Date.UTC(1899,11,30)+v*86400000).toISOString().slice(0,10);\n    const s=String(v??'').trim();\n    let m=s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);\n    if(!m){const br=s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);if(br)m=[s,br[3],br[2],br[1]];}\n    if(!m)throw new Error('Data invalida: '+s);\n    const iso=m[1]+'-'+m[2]+'-'+m[3];\n    if(new Date(iso+'T00:00:00Z').toISOString().slice(0,10)!==iso)throw new Error('Data inexistente: '+s);\n    return iso;\n  }\n  function reviewRow(reason, source, line, record, details) {\n    review.push({motivo:reason,planilha_id:source.id,aba:source.tab,linha:line,praca_origem:source.city,acao:source.action,dados:record,detalhes:details});\n  }\n  for (let si=0;si<sources.length;si++) {\n    const source=sources[si];const cfg=config.find(c=>c.id===source.id&&c.gid===source.gid);\n    if(!cfg)throw new Error('Fonte nao cadastrada');\n    const values=source.values;\n    if(!Array.isArray(values)||values.length===0)throw new Error('Cabecalho ausente: '+cfg.title+' / '+cfg.tab);\n    const headers=values[0].map(v=>String(v??'').trim());\n    while(headers.length&&headers.at(-1)==='')headers.pop();\n    if(JSON.stringify(headers)!==JSON.stringify(cfg.headers))throw new Error('Cabecalhos mudaram em '+cfg.title+' / '+cfg.tab+'. Nenhum lote desta execucao sera enviado.');\n    for(let ri=1;ri<values.length;ri++) {\n      const cells=values[ri];\n      if(!cells.some(v=>v!==null&&v!==undefined&&v!==''))continue;\n      summary.linhas_lidas++;\n      const raw=Object.fromEntries(headers.map((h,i)=>[h,cells[i]??null]));\n      let record={};\n      try {\n        if(cells.slice(headers.length).some(v=>v!==null&&v!==undefined&&v!==''))throw new Error('Valores sem cabecalho');\n        for (const h of headers) {\n          const v=raw[h];\n          if(h==='Data'){record[h]=parseDate(v);continue;}\n          if(idHeaders.includes(h)){\n            if(typeof v==='number'&&!Number.isSafeInteger(v))throw new Error('ID numerico sem precisao; formate o ID como texto no Sheets');\n            const id=String(v??'').trim();if(!/^\\d+$/.test(id))throw new Error('ID ausente ou invalido: '+h);\n            record[h]=id;continue;\n          }\n          if(numericHeaders.has(h)){\n            if(v===null||v===undefined||v===''){record[h]=null;continue;}\n            if(typeof v!=='number'||!Number.isFinite(v)||v<0)throw new Error('Metrica nao numerica ou negativa: '+h);\n            if(h!=='Valor Gasto'&&!Number.isSafeInteger(v))throw new Error('Contagem invalida: '+h);\n            record[h]=v;continue;\n          }\n          if(typeof v==='string'&&/^#(REF!|VALUE!|N\\/A|ERROR!|DIV\\/0!|NAME\\?)/.test(v))throw new Error('Erro de formula em '+h);\n          record[h]=v===null||v===undefined||v===''?null:String(v);\n        }\n        if(!record['NOME DA CAMPANHA'])throw new Error('Campanha sem nome');\n      } catch(error) {reviewRow('linha_invalida',cfg,ri+1,raw,{erro:error.message});continue;}\n      const campaign=normalizeText(record['NOME DA CAMPANHA']);const cities=[];\n      if(campaign.includes('e035'))cities.push('joinville');\n      if(campaign.includes('e037'))cities.push('porto_alegre');\n      if(/e038|goias|goiania/.test(campaign))cities.push('goiania');\n      if(/e039|sao[ _-]+paulo/.test(campaign))cities.push('sao_paulo');\n      if(cities.length>1){reviewRow('praca_ambigua',cfg,ri+1,record,{pracas_detectadas:cities});continue;}\n      const city=cities[0]??cfg.city;\n      const table='trafego_protagon_'+city+'_'+actionSlug(cfg.action);\n      const targetHeaders=specs.get(table);\n      if(!targetHeaders){reviewRow('destino_nao_cadastrado',cfg,ri+1,record,{tabela:table});continue;}\n      const extra=headers.filter(h=>!targetHeaders.includes(h)&&record[h]!==null);\n      if(extra.length){reviewRow('colunas_incompativeis_no_destino',cfg,ri+1,record,{tabela:table,colunas:extra});continue;}\n      const ordered=Object.fromEntries(targetHeaders.map(h=>[h,record[h]??null]));\n      ordered._origem_planilha=cfg.id;ordered._origem_aba=cfg.tab;ordered._origem_linha=ri+1;\n      const key=[ordered.Data,...idHeaders.map(h=>ordered[h])].join('|');\n      const old=byTable.get(table).get(key);\n      if(old){\n        summary.duplicadas_na_origem++;\n        const diffs=targetHeaders.filter(h=>h!=='Creative Thumbnail'&&old[h]!==ordered[h]);\n        if(diffs.length){summary.duplicadas_com_divergencia++;reviewRow('duplicidade_com_divergencia',cfg,ri+1,ordered,{tabela:table,colunas:diffs,primeiros_valores:Object.fromEntries(diffs.map(h=>[h,old[h]]))});}\n      }else byTable.get(table).set(key,ordered);\n    }\n  }\n  const tables={};\n  for (const [table,records] of byTable){tables[table]=[...records.values()];summary.tabelas[table]=records.size;summary.linhas_preparadas+=records.size;}\n  tables.trafego_protagon_revisao=review;summary.linhas_em_revisao=review.length;\n  return {tables,summary};\n}\n\nconst items=$input.all();\nconst config=$('Configurar fontes').all().map(i=>i.json);\nif(items.length!==config.length)throw new Error('Nem todas as abas retornaram. Execucao interrompida.');\nconst sources=items.map((item,i)=>{\n const source=$('Configurar fontes').itemMatching(i).json;\n const data=item.json;\n if(!data.range||!Array.isArray(data.values))throw new Error('Resposta incompleta do Sheets: '+source.title+' / '+source.tab);\n return {...source,values:data.values};\n});\nconst result=normalizeTraffic(sources,config);\nconst batches=[];\nfor(const [table,rows] of Object.entries(result.tables)){\n for(let start=0;start<rows.length;start+=500){\n  batches.push({json:{p_tabela:table,p_registros:rows.slice(start,start+500)}});\n }\n}\nif(batches.length===0)return [];\nbatches[0].json.resumo_origem=result.summary;\nreturn batches;\n"
+      },
+      "id": "42f5bdd1-2699-41d2-9de3-78f6e5859eac",
+      "name": "Preparar lotes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oogehvamgxiagmfgejpu.supabase.co/rest/v1/rpc/n8n_importar_trafego_novos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_tabela: $json.p_tabela, p_registros: $json.p_registros}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "395bd393-7b60-48c6-b976-a0618c057fdd",
+      "name": "Inserir e atualizar recentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const respostas=$input.all().map(i=>i.json);\nconst lotes=$('Preparar lotes').all();\nif(respostas.length!==lotes.length)throw new Error('Quantidade de respostas diferente dos lotes enviados.');\nconst resumo={registros_inseridos:0,registros_atualizados:0,registros_sem_alteracao:0,registros_ja_existentes:0,revisoes_inseridas:0,revisoes_ja_existentes:0,por_tabela:{},origem:lotes[0]?.json.resumo_origem};\nfor(const r of respostas){\n if(typeof r.tabela!=='string'||!Number.isInteger(r.recebidos)||!Number.isInteger(r.inseridos)||!Number.isInteger(r.ja_existentes)||r.inseridos+r.ja_existentes!==r.recebidos)throw new Error('Resposta inesperada do Supabase.');\n if(!Number.isInteger(r.atualizados)||!Number.isInteger(r.sem_alteracao)||r.atualizados<0||r.sem_alteracao<0||r.atualizados+r.sem_alteracao!==r.ja_existentes)throw new Error('Contagem de atualizacoes invalida.');\n const t=resumo.por_tabela[r.tabela]??={inseridos:0,atualizados:0,sem_alteracao:0,ja_existentes:0};\n t.atualizados+=r.atualizados;t.sem_alteracao+=r.sem_alteracao;\n t.inseridos+=r.inseridos;t.ja_existentes+=r.ja_existentes;\n const review=r.tabela==='trafego_protagon_revisao';\n if(!review){resumo.registros_atualizados+=r.atualizados;resumo.registros_sem_alteracao+=r.sem_alteracao;}\n resumo.janela_atualizacao={de:r.atualiza_de,ate:r.atualiza_ate,fuso:r.fuso};\n resumo[review?'revisoes_inseridas':'registros_inseridos']+=r.inseridos;\n resumo[review?'revisoes_ja_existentes':'registros_ja_existentes']+=r.ja_existentes;\n}\nreturn [{json:resumo}];\n"
+      },
+      "id": "71a9cda4-6f5c-4250-8c61-e5b515afafd4",
+      "name": "Resumo da sincronizacao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        60
+      ]
+    },
+    {
+      "id": "protagon-traffic-loop",
+      "name": "Um lote por vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1160,
+        180
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "protagon-traffic-pause",
+      "name": "Pausa entre lotes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1640,
+        300
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 1,
+        "unit": "seconds"
+      }
+    }
+  ],
+  "connections": {
+    "Testar agora": {
+      "main": [
+        [
+          {
+            "node": "Configurar fontes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada hora": {
+      "main": [
+        [
+          {
+            "node": "Configurar fontes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar fontes": {
+      "main": [
+        [
+          {
+            "node": "Ler abas do Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler abas do Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Preparar lotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar lotes": {
+      "main": [
+        [
+          {
+            "node": "Um lote por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inserir e atualizar recentes": {
+      "main": [
+        [
+          {
+            "node": "Pausa entre lotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um lote por vez": {
+      "main": [
+        [
+          {
+            "node": "Resumo da sincronizacao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Inserir e atualizar recentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausa entre lotes": {
+      "main": [
+        [
+          {
+            "node": "Um lote por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

@@ -17,5 +17,8 @@
       "source": "/((?!api(?:/|$)|assets(?:/|$)).*)",
       "destination": "/index.html"
     }
+  ],
+  "regions": [
+    "gru1"
   ]
 }

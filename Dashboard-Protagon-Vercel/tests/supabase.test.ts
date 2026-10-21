@@ -200,6 +200,52 @@ test('prepared leads preserve all rows and order across parallel immutable pages
   } finally { globalThis.fetch = original; }
 });
 
+test('refresh checks the current generation but reuses its complete pages; a new version is read in full', async () => {
+  const original = globalThis.fetch;
+  const source = Array.from({ length: 1253 }, (_, id) => ({ id }));
+  const calls: number[] = [];
+  let version = '12345678-1234-1234-1234-123456789021';
+  globalThis.fetch = (async (input: any) => {
+    const page = Number(new URL(String(input), 'https://example.test').searchParams.get('page'));
+    calls.push(page);
+    return Response.json({ ...snapshotPage(source, page), snapshot: version });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await fetchSupabaseRows('protagon-porto-alegre', 'geral'), source);
+    assert.deepEqual(await fetchSupabaseRows('protagon-porto-alegre', 'geral'), source);
+    assert.deepEqual(calls, [0, 1, 0]);
+    version = '12345678-1234-1234-1234-123456789022';
+    assert.deepEqual(await fetchSupabaseRows('protagon-porto-alegre', 'geral'), source);
+    assert.deepEqual(calls, [0, 1, 0, 0, 1]);
+    globalThis.fetch = (async () => Response.json({ code: 'STALE_SNAPSHOT' }, { status: 503 })) as typeof fetch;
+    await assert.rejects(fetchSupabaseRows('protagon-porto-alegre', 'geral'), /atrasada/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('server cache isolates city and generation, expires retired pages, and keeps responses private', async () => withServerKey(async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async (_url: any, init: RequestInit) => {
+    calls++;
+    const input = JSON.parse(String(init.body));
+    return Response.json({ rows: [{ id: 1 }], page: input.p_page, pageSize: 1000,
+      snapshot: input.p_version, sourceUpdatedAt: new Date().toISOString(), totalRows: 1,
+      versionExpiresAt: input.p_version.endsWith('2') ? new Date(Date.now() - 1000).toISOString() : null });
+  }) as typeof fetch;
+  const query = '?city=protagon-joinville&dataset=geral&prepared=1&version=22222222-1234-1234-1234-123456789021';
+  try {
+    const result = await Promise.all([request(query), request(query)]);
+    assert.equal(calls, 1);
+    assert.ok(result.every(r => r.statusCode === 200 && r.headers['cache-control'] === 'no-store'));
+    assert.equal((await request(query)).headers['x-dashboard-cache'], 'HIT');
+    await request(query.replace('joinville', 'goiania'));
+    assert.equal(calls, 2);
+    await request(query.slice(0, -1) + '2');
+    await request(query.slice(0, -1) + '2');
+    assert.equal(calls, 4, 'A retired generation cannot be retained past its expiry');
+  } finally { globalThis.fetch = original; }
+}));
+
 test('prepared reads reject version changes, truncated pages and stale snapshots', async () => {
   const original = globalThis.fetch;
   const source = Array.from({ length: 1253 }, (_, id) => ({ id }));

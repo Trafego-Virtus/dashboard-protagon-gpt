@@ -4,6 +4,9 @@ import type { DashboardId } from './dashboardSources';
 import { hasSupabaseSource, SUPABASE_DATASETS, type SupabaseDataset } from './supabaseSources';
 
 type Row = Record<string, any>;
+// One complete immutable generation per city, in memory only. Every refresh still
+// checks page zero at the server before reusing the remaining pages.
+const leadSnapshots = new Map<string, { rows: Row[]; snapshot: string; sourceUpdatedAt: string; totalRows: number }>();
 let configCache: { promise: Promise<boolean>; expires: number } | undefined;
 export async function usesSupabase(city: DashboardId, forceRefresh = false): Promise<boolean> {
   if (!hasSupabaseSource(city)) return false;
@@ -50,6 +53,11 @@ export async function fetchSupabaseLeadSnapshot(city: DashboardId, signal?: Abor
     return data as { rows: Row[]; totalRows: number; snapshot: string; sourceUpdatedAt: string };
   };
   const first = await readPage(0);
+  const cached = leadSnapshots.get(city);
+  if (cached && cached.snapshot === first.snapshot && cached.totalRows === first.totalRows
+    && cached.sourceUpdatedAt === first.sourceUpdatedAt) {
+    return { rows: cached.rows, sourceUpdatedAt: cached.sourceUpdatedAt };
+  }
   const remaining = Array.from({ length: Math.max(0, Math.ceil(first.totalRows / 1000) - 1) }, (_, i) => i + 1);
   const pages = await mapConcurrent(remaining, 3, async page => {
     const result = await readPage(page, first.snapshot);
@@ -59,7 +67,9 @@ export async function fetchSupabaseLeadSnapshot(city: DashboardId, signal?: Abor
     return result.rows;
   });
   // Pin every page to the same immutable version, even during a background refresh.
-  return { rows: first.rows.concat(...pages), sourceUpdatedAt: first.sourceUpdatedAt };
+  const complete = { ...first, rows: first.rows.concat(...pages) };
+  leadSnapshots.set(city, complete);
+  return { rows: complete.rows, sourceUpdatedAt: complete.sourceUpdatedAt };
 }
 
 export async function fetchSupabaseRows(city: DashboardId, dataset: SupabaseDataset, signal?: AbortSignal): Promise<Row[]> {

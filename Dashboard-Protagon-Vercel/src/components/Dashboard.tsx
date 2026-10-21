@@ -24,7 +24,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { ptBR } from 'date-fns/locale/pt-BR';
 registerLocale('pt-BR', ptBR);
 
-import { DashboardRefreshNotice } from './DashboardRefreshNotice';
+import { DashboardRefreshNotice, DashboardSnapshotNotice } from './DashboardRefreshNotice';
 import { MetricCard } from './MetricCard';
 import { TicketTypeMetrics, MiniTicketTypeMetrics } from './TicketTypeMetrics';
 import { CreativesTable } from './CreativesTable';
@@ -477,6 +477,7 @@ export function Dashboard({ onBack, dashboardId, onOpenAppMenu }: DashboardProps
         <DashboardRefreshNotice error={error} fetchedAt={rawData?.fetchedAt} loading={loading}
           onRetry={() => setRefreshKey(k => k + 1)} />
       )}
+      {hasCurrentData && <DashboardSnapshotNotice sourceUpdatedAt={rawData?.leadsUpdatedAt} />}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden w-full mx-auto relative">

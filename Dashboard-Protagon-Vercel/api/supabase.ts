@@ -1,6 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash, randomUUID } from 'node:crypto';
+import { ResponseCache } from '../server/responseCache.js';
 import { gzipSync } from 'node:zlib';
 import { supabaseTable, SUPABASE_PAGE_SIZE, SUPABASE_LEAD_ID_WINDOW } from '../src/utils/supabaseSources.js';
+
+const pageCache = new ResponseCache();
+class UpstreamError extends Error {
+  constructor(readonly status: number, readonly code?: string) { super('Supabase request failed'); }
+}
 
 const PROJECT_URL = 'https://oogehvamgxiagmfgejpu.supabase.co';
 const LEAD_COLUMNS = [
@@ -14,8 +21,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  const send = (status: number, data: unknown) => {
-    const json = JSON.stringify(data);
+  const requestId = randomUUID();
+  const started = Date.now();
+  res.setHeader('X-Request-Id', requestId);
+  const send = (status: number, data: unknown, serialized = false) => {
+    const json = serialized ? data as string : JSON.stringify(data);
     const acceptsGzip = String(req.headers['accept-encoding'] || '').split(',').some(value => {
       const [name, ...params] = value.trim().split(';');
       const q = params.find(p => p.trim().startsWith('q='));
@@ -77,7 +87,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       : isBounds ? 'rpc/dashboard_protagon_lead_bounds' : table}`);
     if (!isRpc) {
       url.searchParams.set('select', isLead ? LEAD_COLUMNS : '*');
-      url.searchParams.set('order', isLead ? 'id.asc' : '_origem_planilha.asc,_origem_aba.asc,_origem_linha.asc');
+      url.searchParams.set('order', isLead ? 'id.asc' : 'Data.asc,"ID CAMPANHA".asc,"ID CONJUNTO".asc,"ID ANÚNCIO".asc');
       url.searchParams.set('offset', String(offset));
       url.searchParams.set('limit', String(SUPABASE_PAGE_SIZE));
       if (isLead) {
@@ -89,40 +99,59 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // Legacy service_role JWTs require Bearer auth; new sb_secret keys use apikey.
     if (key!.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
     if (isRpc) { headers['Content-Type'] = 'application/json'; headers['Content-Profile'] = 'public'; }
-    const response = await fetch(url, {
-      headers, cache: 'no-store', signal: AbortSignal.timeout(isBounds ? 50000 : 25000),
-      ...(isRpc ? { method: 'POST', body: JSON.stringify(isPrepared
-        ? { p_city: params.get('city'), p_page: page, p_version: version }
-        : { city: params.get('city') }) } : {}),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      if (isPrepared && error.code === 'P0001') {
-        send(503, { code: 'STALE_SNAPSHOT', retryable: false, error: 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.' });
-        return;
+    const body = isRpc ? JSON.stringify(isPrepared
+      ? { p_city: params.get('city'), p_page: page, p_version: version }
+      : { city: params.get('city') }) : undefined;
+    // Credential changes isolate cached data without retaining the secret as a key.
+    const cacheKey = createHash('sha256').update(key!).update(url.href).update(body || '').digest('hex');
+    const load = async () => {
+      const response = await fetch(url, {
+        headers, cache: 'no-store', signal: AbortSignal.timeout(isBounds ? 50000 : 25000),
+        ...(isRpc ? { method: 'POST', body } : {}),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new UpstreamError(response.status, typeof error.code === 'string' ? error.code : undefined);
       }
-      const code = error.code === '57014' ? 'SOURCE_TIMEOUT'
-        : response.status === 401 || response.status === 403 ? 'SOURCE_ACCESS_DENIED'
-        : response.status === 429 || response.status >= 500 || ['PGRST000', 'PGRST001', 'PGRST002'].includes(error.code)
-          ? 'SOURCE_UNAVAILABLE' : 'SOURCE_QUERY_FAILED';
-      const retryable = code === 'SOURCE_TIMEOUT' || code === 'SOURCE_UNAVAILABLE';
-      if (retryable) res.setHeader('Retry-After', '3');
-      send(retryable ? (code === 'SOURCE_TIMEOUT' ? 504 : 503) : 502, { code, retryable,
-        error: retryable ? 'O Supabase está temporariamente indisponível. Tente novamente em alguns minutos.'
-          : 'Não foi possível consultar a fonte de dados. Verifique a conexão do servidor com o Supabase.' });
-      return;
-    }
-    if (isRpc) { send(200, await response.json()); return; }
-    const rows = await response.json();
-    if (!Array.isArray(rows)) throw new Error('Resposta inválida');
-    // Advance by the actual number returned, even if the project's API cap is
-    // below the requested page size. A final empty page avoids truncation.
-    send(200, { rows, nextOffset: rows.length ? offset + rows.length : null });
+      const result = await response.json();
+      if (!isRpc && !Array.isArray(result)) throw new Error('Resposta inválida');
+      const data = isRpc ? result : { rows: result, nextOffset: result.length ? offset + result.length : null };
+      let expires = 0; // Legacy expensive lead paths are deliberately not cached.
+      if (!isLead) expires = Date.now() + 60_000;
+      if (isPrepared && Array.isArray(data.rows) && Number.isFinite(Date.parse(data.sourceUpdatedAt))) {
+        const ageLimit = Object.hasOwn(data, 'versionExpiresAt') ? (version ? 105 : 90) : (version ? 60 : 45);
+        expires = Math.min(Date.now() + (version ? 5 * 60_000 : 30_000),
+          Date.parse(data.sourceUpdatedAt) + ageLimit * 60_000);
+        // Only cache pinned generations when the RPC supplies their retirement deadline.
+        if (version && !Object.hasOwn(data, 'versionExpiresAt')) expires = 0;
+        else if (data.versionExpiresAt !== null && data.versionExpiresAt !== undefined) {
+          expires = Math.min(expires, Date.parse(data.versionExpiresAt));
+        }
+      }
+      return { body: JSON.stringify(data), expires };
+    };
+    const result = await pageCache.read(cacheKey, load);
+    res.setHeader('X-Dashboard-Cache', result.hit ? 'HIT' : 'MISS');
+    send(200, result.body, true);
   } catch (error) {
-    // Do not log upstream bodies, credentials or lead records.
-    const timeout = error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name);
-    res.setHeader('Retry-After', '3');
-    send(timeout ? 504 : 503, { code: timeout ? 'SOURCE_TIMEOUT' : 'SOURCE_UNAVAILABLE', retryable: true,
-      error: 'O Supabase está temporariamente indisponível. Tente novamente em alguns minutos.' });
+    // Log only allowlisted diagnostics: never upstream bodies, query strings, secrets or records.
+    const upstream = error instanceof UpstreamError ? error : undefined;
+    const timeout = upstream?.code === '57014' || (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name));
+    const stale = isPrepared && upstream?.code === 'P0001';
+    const code = stale ? 'STALE_SNAPSHOT' : timeout ? 'SOURCE_TIMEOUT'
+      : upstream?.status === 401 || upstream?.status === 403 ? 'SOURCE_ACCESS_DENIED'
+      : !upstream || upstream.status === 429 || upstream.status >= 500
+        || ['PGRST000', 'PGRST001', 'PGRST002', 'PGRST003'].includes(upstream.code || '')
+        ? 'SOURCE_UNAVAILABLE' : 'SOURCE_QUERY_FAILED';
+    const retryable = code === 'SOURCE_TIMEOUT' || code === 'SOURCE_UNAVAILABLE';
+    console.warn(JSON.stringify({ event: 'dashboard_source_error', requestId,
+      city: params.get('city'), dataset: params.get('dataset'), page: isPrepared ? page : offset,
+      code, upstreamStatus: upstream?.status, sqlCode: upstream?.code?.match(/^[A-Z0-9]{5,9}$/)?.[0],
+      durationMs: Date.now() - started }));
+    if (retryable) res.setHeader('Retry-After', '3');
+    send(stale ? 503 : retryable ? (timeout ? 504 : 503) : 502, { code, retryable, requestId,
+      error: stale ? 'A atualização dos leads está atrasada. Aguarde alguns minutos e tente novamente.'
+        : retryable ? 'O Supabase está temporariamente indisponível. Tente novamente em alguns minutos.'
+          : 'Não foi possível consultar a fonte de dados. Verifique a conexão do servidor com o Supabase.' });
   }
 }

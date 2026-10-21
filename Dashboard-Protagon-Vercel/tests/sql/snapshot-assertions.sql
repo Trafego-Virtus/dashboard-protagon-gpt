@@ -39,8 +39,11 @@ begin
   perform pg_temp.dashboard_protagon_refresh_snapshot(v_city);
   select count(*) into after_pages from pg_temp.dashboard_protagon_snapshot_pages;
   if after_pages<>before_pages then raise exception 'Unchanged payload was duplicated'; end if;
-  if pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)<>saved_page then
+  if (pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)-'versionExpiresAt')<>(saved_page-'versionExpiresAt') then
     raise exception 'Pinned response changed during replacement'; end if;
+  if (pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)->>'versionExpiresAt')::timestamptz <= statement_timestamp()
+    or pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)->>'versionExpiresAt' is null then
+    raise exception 'Retired generation is missing its future expiry'; end if;
   perform pg_temp.assert_snapshot_matches(v_city);
 
   -- Updating an existing lead rewrites only the affected page.
@@ -57,7 +60,7 @@ begin
   select count(*) into after_pages from pg_temp.dashboard_protagon_snapshot_pages;
   if after_pages<>before_pages+1 then raise exception 'Append copied unchanged pages'; end if;
   perform pg_temp.assert_snapshot_matches(v_city);
-  if pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)<>saved_page then
+  if (pg_temp.dashboard_protagon_lead_page(v_city,0,old_version)-'versionExpiresAt')<>(saved_page-'versionExpiresAt') then
     raise exception 'Old data/count changed during append'; end if;
 
   -- Old-ID insertion, soft/hard deletion and city moves cannot be missed.
@@ -107,7 +110,7 @@ begin
       where m.city=p.city and m.payload_version=p.version and m.page=p.page)) then
     raise exception 'Unreferenced payload survived cleanup'; end if;
 
-  -- 30-minute scheduling: new loads valid through 45 minutes, pinned through 60.
+  -- 30-minute scheduling, delayed warning after 45; hard limits 90/105 minutes.
   select s.version into before_version from pg_temp.dashboard_protagon_snapshots s where s.city=v_city;
   update pg_temp.dashboard_protagon_snapshots s set source_at=statement_timestamp()-interval '40 minutes' where s.city=v_city;
   update pg_temp.dashboard_protagon_snapshot_manifest m set source_at=statement_timestamp()-interval '40 minutes'
@@ -116,6 +119,11 @@ begin
   update pg_temp.dashboard_protagon_snapshots s set source_at=statement_timestamp()-interval '46 minutes' where s.city=v_city;
   update pg_temp.dashboard_protagon_snapshot_manifest m set source_at=statement_timestamp()-interval '46 minutes'
     where m.city=v_city and m.version=before_version;
+  if not (pg_temp.dashboard_protagon_lead_page(v_city)->>'sourceDelayed')::boolean then
+    raise exception 'Delayed snapshot was presented as fresh'; end if;
+  update pg_temp.dashboard_protagon_snapshots s set source_at=statement_timestamp()-interval '91 minutes' where s.city=v_city;
+  update pg_temp.dashboard_protagon_snapshot_manifest m set source_at=statement_timestamp()-interval '91 minutes'
+    where m.city=v_city and m.version=before_version;
   begin
     perform pg_temp.dashboard_protagon_lead_page(v_city);
     raise exception 'Stale new load was accepted';
@@ -123,7 +131,7 @@ begin
     if sqlerrm<>'Dashboard snapshot unavailable or stale' then raise; end if;
   end;
   perform pg_temp.dashboard_protagon_lead_page(v_city,0,before_version);
-  update pg_temp.dashboard_protagon_snapshot_manifest m set source_at=statement_timestamp()-interval '61 minutes'
+  update pg_temp.dashboard_protagon_snapshot_manifest m set source_at=statement_timestamp()-interval '106 minutes'
     where m.city=v_city and m.version=before_version;
   begin
     perform pg_temp.dashboard_protagon_lead_page(v_city,0,before_version);

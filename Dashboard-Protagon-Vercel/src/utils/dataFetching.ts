@@ -45,7 +45,7 @@ export async function fetchRawDashboardData(dashboardId: DashboardId, forceRefre
   const cacheKey = dashboardId;
   
   const cached = requestCache.get(cacheKey);
-  if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+  if (cached && (cached.expiresAt === Infinity || (!forceRefresh && cached.expiresAt > Date.now()))) {
     return cached.promise;
   }
   
