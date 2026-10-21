@@ -3,7 +3,7 @@ import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import handler from '../api/supabase';
-import { fetchSupabaseRows, normalizeSupabaseLead } from '../src/utils/supabaseData';
+import { fetchSupabaseRows, normalizeSupabaseLead, sortTrafficBySource } from '../src/utils/supabaseData';
 import { supabaseTable, SUPABASE_CITIES, SUPABASE_DATASETS } from '../src/utils/supabaseSources';
 import { fetchRawDashboardData } from '../src/utils/dataFetching';
 import { processDashboardMetrics } from '../src/utils/metricsCalculator';
@@ -168,6 +168,26 @@ test('migration switches city leads and all advertising to Supabase, preserving 
 
 const snapshotVersion = '12345678-1234-1234-1234-123456789012';
 const sourceUpdatedAt = '2026-10-19T18:00:00+00:00';
+
+test('indexed traffic pagination restores source order before calculations and creative selection', async () => {
+  const original = globalThis.fetch;
+  const source = [
+    { id: 2, _origem_planilha: 'A', _origem_aba: 'MET', _origem_linha: 10, spend: 0.2 },
+    { id: 3, _origem_planilha: 'B', _origem_aba: 'MET', _origem_linha: 1, spend: 0.3 },
+    { id: 1, _origem_planilha: 'A', _origem_aba: 'MET', _origem_linha: 2, spend: 0.1 },
+  ];
+  globalThis.fetch = (async (input: any) => {
+    const offset = Number(new URL(String(input), 'https://example.test').searchParams.get('offset'));
+    const rows = source.slice(offset, offset + 2);
+    return Response.json({ rows, nextOffset: rows.length ? offset + rows.length : null });
+  }) as typeof fetch;
+  try {
+    const rows = await fetchSupabaseRows('protagon-joinville', 'met');
+    assert.deepEqual(rows.map(r => r.id), [1, 2, 3]);
+    assert.equal(rows.reduce((sum, r) => sum + r.spend, 0), 0.1 + 0.2 + 0.3);
+    assert.deepEqual(sortTrafficBySource([{ id: 4 }, ...rows]).map(r => r.id), [1, 2, 3, 4]);
+  } finally { globalThis.fetch = original; }
+});
 function snapshotPage(rows: any[], page: number) {
   return { rows: rows.slice(page * 1000, (page + 1) * 1000), page, pageSize: 1000,
     snapshot: snapshotVersion, totalRows: rows.length, sourceUpdatedAt };

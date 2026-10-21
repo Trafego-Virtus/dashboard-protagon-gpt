@@ -88,13 +88,33 @@ async function fetchPages(city: DashboardId, dataset: SupabaseDataset, signal?: 
     const page = await requestSupabaseJson(`/api/supabase?${params}`, labels[dataset], signal);
     if (!Array.isArray(page.rows)) throw new Error('O Supabase retornou dados inválidos.');
     rows.push(...page.rows);
-    if (page.nextOffset === null) return rows;
+    if (page.nextOffset === null) return sortTrafficBySource(rows);
     if (!page.rows.length || page.nextOffset !== offset + page.rows.length) {
       throw new Error('A paginação do Supabase retornou dados incompletos.');
     }
     offset = page.nextOffset;
   }
   throw new Error('A consulta excedeu o limite de registros. Restrinja o histórico na fonte.');
+}
+
+// Fetch using the database's existing PK index, then restore source order once
+// on the complete dataset. This preserves first-row creative metadata and the
+// accumulation order of existing financial calculations without a DB-wide sort.
+// The database uses en_US.UTF-8; line numbers are numeric and nulls sort last.
+const sourceCollator = new Intl.Collator('en-US');
+export function sortTrafficBySource(rows: Row[]) {
+  return rows.sort((a, b) => {
+    for (const key of ['_origem_planilha', '_origem_aba', '_origem_linha']) {
+      const av = a[key], bv = b[key];
+      if (av == null && bv == null) continue;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const difference = key === '_origem_linha' ? Number(av) - Number(bv)
+        : sourceCollator.compare(String(av), String(bv));
+      if (difference) return difference;
+    }
+    return 0;
+  });
 }
 
 const text = (value: unknown) => String(value ?? '').normalize('NFD')

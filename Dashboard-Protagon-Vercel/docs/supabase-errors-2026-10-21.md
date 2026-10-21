@@ -20,7 +20,7 @@ As evidências apontam para concorrência e carga no banco, agravadas por consul
 - API: cache privado em memória por instância, limitado a 32 MiB de JSON; 30 s para a página inicial, até 5 min para páginas de uma versão imutável e 60 s para tráfego. Requisições idênticas simultâneas compartilham uma consulta. Erros não são armazenados. Continua `Cache-Control: no-store`, sem cache público/CDN nem persistência de leads no navegador.
 - Cache de versões respeita a idade da fonte e o prazo de retirada informado pelo RPC. O cache não renova `sourceUpdatedAt`.
 - Navegador: verifica a versão atual na primeira página e reaproveita o conjunto completo quando ela não mudou. Uma atualização de Joinville com a mesma versão passa de 25 consultas de leads para uma; versões novas continuam sendo lidas integralmente. Solicitações simultâneas da mesma praça compartilham o carregamento em andamento.
-- Tráfego: ordenação pela chave primária existente, única e determinística, sem criar índices ou ocupar mais espaço.
+- Tráfego: paginação pela chave primária existente, única e determinística, sem criar índices ou ocupar mais espaço. Após ler todas as páginas, o navegador restaura a ordem de origem para preservar a seleção de metadados e a ordem das somas financeiras; a conferência visual identificou e corrigiu uma diferença de arredondamento de um centavo.
 - Vercel: região `gru1`, junto ao banco em São Paulo, em vez do `iad1` observado na resposta anterior.
 - Diagnóstico: erros têm identificador e logs com praça, conjunto, status/código e duração, sem registros, corpos do Supabase ou credenciais.
 - RPC de leitura: mantém a última versão completa disponível para novos carregamentos por até 90 minutos; aviso amarelo no dashboard depois de 45 minutos com o horário real da fonte. Páginas já iniciadas têm limite de 105 minutos e continuam sujeitas à retirada 15 minutos após substituição. Esses limites não alteram a frequência de atualização e não transformam uma preparação fracassada em sucesso.
@@ -38,7 +38,7 @@ Não há conexão com o n8n nesta sessão. A automação ativa não foi modifica
 
 ## Verificação
 
-41 testes TypeScript/React aprovados; typecheck e build aprovados. Testes PostgreSQL com tabelas temporárias sintéticas cobrem preservação dos 27 campos, versões completas, atualização/remoção/mudança de praça, rollback, reutilização de páginas, expiração e aviso de atraso. Esses testes não acessam dados reais de leads.
+42 testes TypeScript/React aprovados; typecheck e build aprovados. Testes PostgreSQL com tabelas temporárias sintéticas cobrem preservação dos 27 campos, versões completas, atualização/remoção/mudança de praça, rollback, reutilização de páginas, expiração e aviso de atraso. Esses testes não acessam dados reais de leads.
 
 Operação aplicada: `allow_complete_snapshot_during_short_refresh_delay` por `apply_migration`, após `verify_snapshot_delay_with_temporary_fixtures`. O RPC foi consultado nas quatro praças e retornou páginas de 1.000 linhas, totais e timestamps válidos. Os jobs continuam ativos com `0,30`, `5,35`, `10,40`, `15,45` por hora.
 
@@ -47,3 +47,9 @@ As primeiras tentativas de aplicar os testes falharam no conector com `Invalid o
 O conector Vercel recusou acesso administrativo por falta de escopo da equipe. A verificação de publicação utiliza o status do commit no GitHub e requisições à produção, além da tela no navegador.
 
 Referências: [HTTP Request V3](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/HttpRequest/V3/HttpRequestV3.node.ts), [região das funções Vercel](https://vercel.com/docs/functions/configuring-functions/region).
+
+## Publicação e verificação em produção
+
+Commit inicial `9a221e7`: status Vercel concluído. Respostas confirmadas em `gru1`; Joinville retornou HTTP 200 em 6,714 s (MISS) e 0,656 s (HIT) em duas leituras seguidas da mesma página. É uma amostra por requisição, não uma medição da tela inteira nem garantia durante a carga horária. Leituras de leads e Meteórico das outras três praças também retornaram HTTP 200. A conferência visual carregou os totais de Joinville após o deploy.
+
+O Security Advisor retornou somente avisos informativos de RLS sem políticas nas tabelas destinadas ao serviço; nenhuma mudança de permissão pública foi feita. As quatro últimas execuções entre 12:30 e 12:45 UTC tiveram sucesso, sem alteração de agendamento neste trabalho.
